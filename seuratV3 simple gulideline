@@ -1,0 +1,345 @@
+#目标：将8个样本的PBMC数据聚类，找到其中的T细胞，再重新聚类，探究有无异常的T细胞亚群
+
+#准备1: 服务器R studio server。使用方法同R，文件的上传和下载经过内置的资源管理器即可
+#准备2: 每个样本分别有自己的barcode（细胞列）、feature（gene列）、matrix（表达矩阵的值），将其用7zip压缩为gz格式，放在一个文件夹下。比如样本1的barcode.gz. feature.gz matrix.gz都放在sample1文件夹中，依次类推。将sample1、2、3……8统一放到PBMC-wzm文件夹中，用zip格式而非rar格式压缩，上传到r-studio。rstudio会自动解压
+
+#技巧：遇到不会的函数，google 函数名+Rdocumentation 看其结构
+#技巧：每次遇到新生成的R对象，可以view() 看其数据结构
+#技巧：对流程的整体思路，见https://satijalab.org/seurat/vignettes.html下的“Guided tutorial --- 2,700 PBMCs” 和“Multiple Dataset Integration and Label Transfer”
+
+#代码正式开始
+
+#注意seurat是V3版本
+library(Seurat)
+library(ggplot2)
+library(cowplot)
+library(patchwork)
+
+#建立Seurat对象。
+#Read10x这步，注意其路径，要根据自己的情况修改。BD project/BD1指的是在工作区间中，有一个BD project的文件夹，其中有一个BD1的文件夹。里面应该事先处理过，只有样本1的那3个文件
+#createseuratobject这步，用来构建样本1的seurat对象。质量控制（最小细胞数、最低基因读数）随意，一般就按照默认
+#依次构建8个对象
+#注意样本的顺序 自己定义 但不要记错
+
+sce.10x <- Read10X(data.dir = 'BD project/BD1')
+sce1 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 60, 
+                           min.features = 200, 
+                           project = "BD1") 
+
+sce.10x <- Read10X(data.dir = 'BD project/HC1')
+sce2 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 60, 
+                           min.features = 200, 
+                           project = "HC1") 
+
+sce.10x <- Read10X(data.dir = 'BD project/BD2')
+sce3 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 60, 
+                           min.features = 200, 
+                           project = "BD2") 
+
+sce.10x <- Read10X(data.dir = 'BD project/HC2')
+sce4 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 60, 
+                           min.features = 200, 
+                           project = "HC2") 
+
+sce.10x <- Read10X(data.dir = 'BD project/BD3')
+sce5 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 60, 
+                           min.features = 200, 
+                           project = "BD3") 
+
+sce.10x <- Read10X(data.dir = 'BD project/HC3')
+sce6 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 60, 
+                           min.features = 200, 
+                           project = "HC3") 
+
+
+sce.10x <- Read10X(data.dir = 'BD project/BD4')
+sce7 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 60, 
+                           min.features = 200, 
+                           project = "BD4") 
+
+sce.10x <- Read10X(data.dir = 'BD project/HC4')
+sce8 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 60, 
+                           min.features = 200, 
+                           project = "HC4") 
+
+#添加一个样本标签，后续分组可用
+#对于sce1@meta.data，@指的是对象sce1的子属性，$是引用meta.data的属性
+#在这里，meta.data是sce1这个seurat对象自带的，而orig.ident是我自己在meta.data中构建的
+#sce1本质是把样本1的feature（即基因）、barcode（即细胞）和matrix合并起来，构建了一个表达矩阵，两个轴分别是细胞和基因，每个值就是count（读数）
+#不要机械地照抄代码。要看BD1、HC1是否对应你构建的样本的顺序
+
+
+sce1@meta.data$orig.ident <- "BD1"
+sce2@meta.data$orig.ident <- "HC1"
+sce3@meta.data$orig.ident <- "BD2"
+sce4@meta.data$orig.ident <- "HC2"
+sce5@meta.data$orig.ident <- "BD3"
+sce6@meta.data$orig.ident <- "HC3"
+sce7@meta.data$orig.ident <- "BD4"
+sce8@meta.data$orig.ident <- "HC4"
+
+sce1@meta.data$orig.ident2 <- "BD"
+sce2@meta.data$orig.ident2 <- "HC"
+sce3@meta.data$orig.ident2 <- "BD"
+sce4@meta.data$orig.ident2 <- "HC"
+sce5@meta.data$orig.ident2 <- "BD"
+sce6@meta.data$orig.ident2 <- "HC"
+sce7@meta.data$orig.ident2 <- "BD"
+sce8@meta.data$orig.ident2 <- "HC"
+
+#质量控制：剔除线粒体基因较多的细胞，以及选取RNA多的细胞
+
+sce1[["percent.mt"]] <- PercentageFeatureSet(sce1, pattern = "^MT-")
+sce1 <- subset(sce1, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+sce2[["percent.mt"]] <- PercentageFeatureSet(sce2, pattern = "^MT-")
+sce2 <- subset(sce2, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+sce3[["percent.mt"]] <- PercentageFeatureSet(sce3, pattern = "^MT-")
+sce3 <- subset(sce3, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+sce4[["percent.mt"]] <- PercentageFeatureSet(sce4, pattern = "^MT-")
+sce4 <- subset(sce4, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+sce5[["percent.mt"]] <- PercentageFeatureSet(sce5, pattern = "^MT-")
+sce5 <- subset(sce5, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+sce6[["percent.mt"]] <- PercentageFeatureSet(sce6, pattern = "^MT-")
+sce6 <- subset(sce6, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+sce7[["percent.mt"]] <- PercentageFeatureSet(sce7, pattern = "^MT-")
+sce7 <- subset(sce7, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+sce8[["percent.mt"]] <- PercentageFeatureSet(sce8, pattern = "^MT-")
+sce8 <- subset(sce8, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+
+
+#将数据标准化。所谓标准化基本就是log(x+1)。（直接运行即可）
+sce1 <- NormalizeData(sce1, normalization.method = "LogNormalize", scale.factor = 10000)
+sce2 <- NormalizeData(sce2, normalization.method = "LogNormalize", scale.factor = 10000)
+sce3 <- NormalizeData(sce3, normalization.method = "LogNormalize", scale.factor = 10000)
+sce4 <- NormalizeData(sce4, normalization.method = "LogNormalize", scale.factor = 10000)
+sce5 <- NormalizeData(sce5, normalization.method = "LogNormalize", scale.factor = 10000)
+sce6 <- NormalizeData(sce6, normalization.method = "LogNormalize", scale.factor = 10000)
+sce7 <- NormalizeData(sce7, normalization.method = "LogNormalize", scale.factor = 10000)
+sce8 <- NormalizeData(sce8, normalization.method = "LogNormalize", scale.factor = 10000)
+
+#找到可变基因。合并样本的关键步骤（直接运行即可）
+#思路是：根据基因变化的残差，找到前2000个基因，它们是决定每个样本不同的最主要的基因。那么利用它们进行矫正，就可以很好地把样本聚合在一起
+sce1 <- FindVariableFeatures(sce1, selection.method = "vst", nfeatures = 2000)
+sce2 <- FindVariableFeatures(sce2, selection.method = "vst", nfeatures = 2000)
+sce3 <- FindVariableFeatures(sce3, selection.method = "vst", nfeatures = 2000)
+sce4 <- FindVariableFeatures(sce4, selection.method = "vst", nfeatures = 2000)
+sce5 <- FindVariableFeatures(sce5, selection.method = "vst", nfeatures = 2000)
+sce6 <- FindVariableFeatures(sce6, selection.method = "vst", nfeatures = 2000)
+sce7 <- FindVariableFeatures(sce7, selection.method = "vst", nfeatures = 2000)
+sce8 <- FindVariableFeatures(sce8, selection.method = "vst", nfeatures = 2000)
+
+#限速步，将样本整合 （直接运行即可）
+#dims一般取1:30
+#sce.integrated就是整合后的seurat对象
+sce.anchors <- FindIntegrationAnchors(object.list = list(sce1, sce2, sce3, sce4, sce5, sce6, sce7, sce8), dims = 1:30)
+sce.integrated <- IntegrateData(anchorset = sce.anchors, dims = 1:30)
+
+
+#限速步，将样本整合
+sce.anchors <- FindIntegrationAnchors(object.list = list(sce1, sce2, sce3, sce4, sce5, sce6, sce7, sce8), dims = 1:30)
+sce.integrated <- IntegrateData(anchorset = sce.anchors, dims = 1:30)
+
+#可以运行sce.integrated。我们会发现其assay里面有两个矩阵，分别是RNA和integrated。其中RNA就是存放的log化之后的基因值，而integrated是在RNA基础上进一步经过批次效应矫正的值
+#注意RNA矩阵包括了所有的基因，而integraed矩阵仅包括了2000个基因（即上上步那2000个残差最大的基因）
+#根据官网说明，仅找cluster marker的时候用integrated；差异分析的时候用RNA（即normalized data）
+#下一步就是让默认被调用的矩阵变成integrated
+
+DefaultAssay(sce.integrated) <- "integrated"
+sce.integrated
+
+#开始画图，首先看各个样本在聚合后的分布情况
+#对于聚类，我们有tsne和umap两种方式，后者可以认为是前者的粗糙版，但有的时候也会用到。若使用umap方法，则需要不断对dims调整，一般从1:30开始，不要低于1:30，比如不要1:25这样
+#我们这里先使用tsne
+sce.integrated <- ScaleData(sce.integrated, verbose = FALSE)
+sce.integrated <- RunPCA(sce.integrated, npcs = 30, verbose = FALSE)
+sce.integrated <- RunTSNE(sce.integrated, reduction = "pca")
+##也可以sce.integrated <- RunUMAP(sce.integrated, reduction = "pca", dims =1:30)
+
+DimPlot(sce.integrated, reduction = "tsne", group.by = "orig.ident") #比如前一步用umap降维，则reduction= umap
+
+#开始聚类分析
+#这里resolution是一个需要不断调整的参数！
+#根据教程，resolution在0.4-1.2对应3k个细胞（教程选了0.5对应3k个细胞）；resolution越大cluster越多；但并非越大越好，有的cluster也可以是噪音
+#dim一般选择30，不建议过小，不建议改动。
+sce.integrated <- FindNeighbors(sce.integrated, dims = 1:30)
+sce.integrated <- FindClusters(sce.integrated, resolution = 1)
+
+DimPlot(object = sce.integrated, reduction = "tsne",
+        group.by = 'seurat_clusters',
+        label = TRUE)
+#如果发现聚类不理想，则在findcluster步重新选取合适的resolution，重新画图
+
+
+#看样本在亚群间的分布
+#最忌讳的是，某些亚群完全由某些样本构成，则表明整合效果不好
+distribution <- table(sce.integrated@meta.data$orig.ident,sce.integrated@meta.data$seurat_clusters)
+
+distribution
+
+write.csv(distribution,file="BD project/distribution.csv")
+
+#根据marker鉴定T细胞亚群，比如naive T，memory CD4T等；
+#如何确定marker？可以参考一些生信的文章
+#featureplot：直观地显示表达的细胞
+#vlnplot：小提琴图
+#这里面的gene必须是gene symbol格式，注意大小写。具体可以在ncbi-gene查找
+
+FeaturePlot(sce.integrated, features = c("C1QA","FCGR3A"),reduction = "tsne")
+VlnPlot(sce.integrated, features = c("FCGR3A","C1QA"), do.return=T) + geom_boxplot(width=0.1)
+
+#当然也可以用dotplot图
+#首先给定一系列marker，存放在markers.to.plot
+markers.to.plot <- c("CD14", "S100A12" ,"CCR2",
+                     "CD74", "HLA-DRA", "CLEC10A",
+                     "CST3","FCER1A",
+                     "FCGR3A","SIGLEC10","CX3CR1","C1QA")
+DotPlot(sce.integrated, features = rev(markers.to.plot), cols = c("green", "red"), dot.scale = 5, ) + RotatedAxis()
+
+#得到所有cluster的marker，耗时较长
+pbmc.markers <- FindAllMarkers(sce.integrated, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+pbmc.markers
+
+#比如鉴定出9，12，13，19群是单核细胞，那么将其单独取出来，构建单核细胞
+#T细胞同理
+#至此第一部分完成
+monocyte_new <- subset(sce.integrated,idents=c(9,12,13,19),invert = FALSE)
+
+
+#第二部分（以下我以单核细胞为例，T细胞同理）
+##下一步要从Mo里面挑出8个病人，然后重新整合。为什么不能用“从整合后的PBMC中挑选出来的Mo”？因为这样的Mo的整合，是基于之前的2000个variablefeature，然而这2000个variablefeature是相对于所有的PBMC，未必能很好地反应Mo
+#那么需要把monocyte_new重新拆分成8个样本，再找variablefeature；这次就是Mo的variablefeature了
+###由于要重新整合，那么需要重新发现variablefeature；而variablefeature需要在RNA assay即原始数据发现
+####否则就会在PBMC里面的2000个integrated data里面找
+monocyte_new
+DefaultAssay(monocyte_new) <- "RNA"
+monocyte_new #看一下现在的active assasy是不是RNA
+
+#monocyte_new包含了上一步的聚类分群，也包含了8个样本的信息
+#此步骤是把monocyte_new重新基于样本分群
+monocyte_new$celltype.stim <- paste(monocyte_new$orig.ident)
+monocyte_new$celltype <- Idents(monocyte_new)
+Idents(monocyte_new) <- "celltype.stim"
+DimPlot(monocyte_new, reduction = "tsne")
+
+#然后基于样本拆分monocyte_new
+monocyte_new_BD <- subset(monocyte_new,idents=c("BD"),invert = FALSE)
+monocyte_new_BD_hu <-subset(monocyte_new,idents=c("BD-hu"),invert = FALSE)
+monocyte_new_BD_jiao <- subset(monocyte_new,idents=c("BD-jiao"),invert = FALSE)
+monocyte_new_BD_song <- subset(monocyte_new,idents=c("BD-song"),invert = FALSE)
+monocyte_new_HC <- subset(monocyte_new,idents=c("HC"),invert = FALSE)
+monocyte_new_HC_he <- subset(monocyte_new,idents=c("HC-he"),invert = FALSE)
+monocyte_new_HC_wu <- subset(monocyte_new,idents=c("HC-wu"),invert = FALSE)
+monocyte_new_HC_yang <- subset(monocyte_new,idents=c("HC-yang"),invert = FALSE)
+monocyte_new_HC_yang
+monocyte_new_HC_yang@assays
+
+
+#重新找到高变gene
+monocyte_new_BD <- FindVariableFeatures(monocyte_new_BD, selection.method = "vst", nfeatures = 2000)
+monocyte_new_BD_hu <- FindVariableFeatures(monocyte_new_BD_hu, selection.method = "vst", nfeatures = 2000)
+monocyte_new_BD_jiao <- FindVariableFeatures(monocyte_new_BD_jiao, selection.method = "vst", nfeatures = 2000)
+monocyte_new_BD_song <- FindVariableFeatures(monocyte_new_BD_song, selection.method = "vst", nfeatures = 2000)
+monocyte_new_HC <- FindVariableFeatures(monocyte_new_HC, selection.method = "vst", nfeatures = 2000)
+monocyte_new_HC_he <- FindVariableFeatures(monocyte_new_HC_he, selection.method = "vst", nfeatures = 2000)
+monocyte_new_HC_wu <- FindVariableFeatures(monocyte_new_HC_wu, selection.method = "vst", nfeatures = 2000)
+monocyte_new_HC_yang <- FindVariableFeatures(monocyte_new_HC_yang, selection.method = "vst", nfeatures = 2000)
+
+
+
+##重新整合
+#注意有的时候细胞过少，需要计算k.filter
+#计算方式为min(200, min(sapply(monocyte_new_list, ncol)))
+monocyte_new_list <- list(monocyte_new_BD,
+                          monocyte_new_BD_hu,
+                          monocyte_new_BD_jiao,
+                          monocyte_new_BD_song,
+                          monocyte_new_HC,
+                          monocyte_new_HC_he,
+                          monocyte_new_HC_wu,
+                          monocyte_new_HC_yang)
+
+k.filter <- min(200, min(sapply(monocyte_new_list, ncol)))
+k.filter
+monocyte_new_anchors <- FindIntegrationAnchors(object.list = monocyte_new_list, dims = 1:30, k.filter = k.filter)
+monocyte_new_anchors_integrated <- IntegrateData(anchorset = monocyte_new_anchors, dims = 1:30)
+monocyte_new_anchors_integrated@assays
+
+#现在可以把活动assay换成integrated了
+DefaultAssay(monocyte_new_anchors_integrated) <- "integrated"
+
+#重新分析PCA等
+monocyte_new_anchors_integrated <- ScaleData(monocyte_new_anchors_integrated, verbose = FALSE)
+monocyte_new_anchors_integrated <- RunPCA(monocyte_new_anchors_integrated, npcs = 30, verbose = FALSE)
+monocyte_new_anchors_integrated <- RunTSNE(monocyte_new_anchors_integrated, reduction = "pca")
+DimPlot(monocyte_new_anchors_integrated, reduction = "tsne", group.by = "orig.ident")
+
+monocyte_new_anchors_integrated <- FindNeighbors(monocyte_new_anchors_integrated, dims = 1:30)
+monocyte_new_anchors_integrated <- FindClusters(monocyte_new_anchors_integrated, resolution = 1)
+
+DimPlot(object = monocyte_new_anchors_integrated, reduction = "tsne",
+        group.by = 'seurat_clusters',
+        label = TRUE)
+
+distribution <- table(monocyte_new_anchors_integrated@meta.data$orig.ident,monocyte_new_anchors_integrated@meta.data$seurat_clusters)
+distribution
+write.csv(distribution,file="PBMC/monocyte_new distribution.csv")
+
+#用featureplot和小提琴图以及dotplot鉴定各亚群
+#假设我们找到了亚群，如何鉴定的实例如下：
+#这里我为了保证monocyte_new_anchors_integrated对象不出错，我构建了一个新对象
+monocyte_new_anchors_integrated2 <- monocyte_new_anchors_integrated
+monocyte_new_anchors_integrated2 <- RenameIdents(monocyte_new_anchors_integrated2,
+                          `0` = "CM",
+                          `1` = "CM",
+                          `2` = "CM",
+                          `3` = "NCM",
+                          `4` = "IM",
+                          `5` = "CM",
+                          `6` = "DC",
+                          `7` = "CM",
+                          `8` = "CM",
+                          `9` = "CM",
+                          `10` = "CM")
+DimPlot(monocyte_new_anchors_integrated2, label = TRUE)
+
+#现在monocyte_new_anchors_integrated2包含了样本分群信息，实验组对照组分群信息和聚类的分群信息
+#下步是为了基于实验组对照组继续拆分聚类的分群信息
+monocyte_new_anchors_integrated2$celltype.stim <- paste(Idents(monocyte_new_anchors_integrated2), monocyte_new_anchors_integrated2$orig.ident2, sep = "_")
+monocyte_new_anchors_integrated2$celltype <- Idents(monocyte_new_anchors_integrated2)
+Idents(monocyte_new_anchors_integrated2) <- "celltype.stim"
+DimPlot(monocyte_new_anchors_integrated2, label = TRUE)
+
+#差异分析，比如分析NCM中BD和HC的差异，现在可以把活动assay换成RNA了
+##FindMarkers函数可以引用DESeq2等包，注意要提前载入。引用其它包会增大分析的时间
+##根据官网说明，此使slot选择counts，也就是未经过log处理过的最原始数据
+#载入一下DESeq2包
+
+DefaultAssay(monocyte_new_anchors_integrated2) <- "RNA"
+NCM_DEG <- FindMarkers(monocyte_new_anchors_integrated2, ident.1 = "NCM_BD", ident.2 = "NCM_HC", 
+                       slot = "counts", test.use = "DESeq2")
+write.csv(NCM_DEG,file="PBMC/NCM_DEG.csv")
+
+#当然也可以用seurat3自带的方法
+NCM_DEG <- FindMarkers(monocyte_new_anchors_integrated2, ident.1 = "NCM_BD", ident.2 = "NCM_HC", 
+                       slot = "data")
+
+
+
+
+
+
+
+
+
+
+
+
+
