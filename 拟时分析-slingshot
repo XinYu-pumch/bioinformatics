@@ -1,0 +1,131 @@
+library(slingshot)
+library(scater)
+library(loomR)
+library(ggbeeswarm)
+library(ggthemes)
+library(gam)
+library(clusterExperiment)
+library(SingleCellExperiment)
+
+
+#试试slingshot，vignette参考https://bustools.github.io/BUS_notebooks_R/slingshot.html#slingshot
+#准备：一个已经分析好了的seurat对象（包括了tsne等分群）
+
+seu <- readRDS('BD-Mo-aggr/monocyte_new_anchors_integrated.rds')
+seu <- RunUMAP(seu, reduction = "pca", dims = 1:30)
+
+
+#第一步，根据tsne分析细胞的轨迹（限速步）
+sds <- slingshot(Embeddings(seu, "tsne"), clusterLabels = seu$seurat_clusters, 
+                 start.clus = 0, stretch = 0)
+
+##大概是slingshot无法调用ggplot，于是自己设置了color
+cell_pal <- function(cell_vars, pal_fun,...) {
+  if (is.numeric(cell_vars)) {
+    pal <- pal_fun(100, ...)
+    return(pal[cut(cell_vars, breaks = 100)])
+  } else {
+    categories <- sort(unique(cell_vars))
+    pal <- setNames(pal_fun(length(categories), ...), categories)
+    return(pal[cell_vars])
+  }
+}
+
+##基于seu$seurat_clusters上色
+cell_colors <- cell_pal(seu$seurat_clusters, brewer_pal("qual", "Set2"))
+cell_colors_clust <- cell_pal(seu$seurat_clusters, hue_pal())
+#绘图
+plot(reducedDim(sds), col = cell_colors, pch = 16, cex = 0.5)
+lines(sds, lwd = 2, type = 'lineages', col = 'black')
+
+DimPlot(object = seu, reduction = "tsne",
+        group.by = 'seurat_clusters',
+        label = TRUE)
+
+FeaturePlot(seu, features = c("C1QA"),reduction = "tsne")
+##以下的代码可以忽略；通过slingshot找DE_gene需要调用python
+
+
+#第二步，找到slingPseudotime_1
+##这里需要将seurat对象转化为SingleCellExperiment对象，注意改成rna
+DefaultAssay(seu) <- "RNA"
+mo.sce <- as.SingleCellExperiment(seu)
+
+##Plot PC1 vs PC2 colored by Slingshot pseudotime
+sce <- slingshot(mo.sce, reducedDim = 'PCA')
+sce$slingPseudotime_1
+colors <- rainbow(50, alpha = 1)
+plot(reducedDims(sce)$PCA, col = colors[cut(sce$slingPseudotime_1,breaks=50)], pch=16, asp = 1)
+lines(SlingshotDataSet(sce), lwd=2)
+
+# Plot Slingshot pseudotime vs cell stage.
+ggplot(as.data.frame(colData(mo.sce)), aes(x = sce$slingPseudotime_1, y = seurat_clusters, 
+                                             colour = seurat_clusters)) +
+  geom_quasirandom(groupOnX = FALSE) +
+  scale_color_tableau() + theme_classic() +
+  xlab("Slingshot pseudotime") + ylab("Timepoint") +
+  ggtitle("Cells ordered by Slingshot pseudotime")
+
+###################
+
+#耗时超长，大约6h；因此后台运行
+mo.sce <- slingshot(mo.sce, clusterLabels = mo.sce$seurat_clusters, reducedDim = 'PCA')
+#
+`_results`[["mo.sce"]]$slingPseudotime_1
+
+
+colors <- rainbow(50, alpha = 1)
+plot(reducedDims(`_results`[["mo.sce"]])$PCA, col = colors[cut(`_results`[["mo.sce"]]$slingPseudotime_1,breaks=50)], pch=16, asp = 1)
+lines(SlingshotDataSet(`_results`[["mo.sce"]]), lwd=2)
+
+# Plot Slingshot pseudotime vs cell stage.
+ggplot(as.data.frame(colData(`_results`[["mo.sce"]])), aes(x = `_results`[["mo.sce"]]$slingPseudotime_1, y = seurat_clusters, 
+                                           colour = seurat_clusters)) +
+  geom_quasirandom(groupOnX = FALSE) +
+  scale_color_tableau() + theme_classic() +
+  xlab("Slingshot pseudotime") + ylab("Timepoint") +
+  ggtitle("Cells ordered by Slingshot pseudotime")
+
+
+
+
+
+#第三步，差异分析（很有问题！！！）
+Y <- log2(counts(`_results`[["mo.sce"]]) + 1)
+var1K <- names(sort(apply(Y, 1, var),decreasing = TRUE))[1:1000]
+Y <- Y[var1K, ]  # only counts for variable genes
+##耗时15-30min
+t <- `_results`[["mo.sce"]]$slingPseudotime_1
+
+gam.pval <- apply(Y, 1, function(z){
+  d <- data.frame(z=z, t=t)
+  tmp <- gam(z ~ lo(t), data=d)
+  p <- summary(tmp)[4][[1]][1,5]
+  p
+})
+
+topgenes <- names(sort(gam.pval, decreasing = FALSE))[1:100] 
+
+
+
+require(clusterExperiment)
+heatdata <- as.matrix(seu@assays$RNA[rownames(seu@assays$RNA) %in% topgenes, order(t, na.last = NA)])
+heatclus <- seu@meta.data$seurat_clusters[order(t, na.last = NA)]
+heatmap(log1p(heatdata), Colv = NA,
+        ColSideColors = brewer.pal(9,"Set1")[heatclus])
+
+
+#png(paste0(mydir, "heatmap_time_genes.png"), width=10, height=10, units = "in", res=200)
+ce <- ClusterExperiment(heatdata, heatclus, transformation = log1p)
+clusterExperiment::plotHeatmap(ce, clusterSamplesData = "orderSamplesValue", visualizeData = 'transformed', cexRow = 1.5, fontsize = 15)
+dev.off()
+
+plotExpression(`_results`[["mo.sce"]], "Obox5", x = "slingPseudotime_1", 
+               colour_by = "seurat_clusters", show_violin = FALSE,
+               show_smooth = TRUE)
+
+
+
+
+
+
