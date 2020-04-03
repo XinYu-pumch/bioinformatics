@@ -1,0 +1,31 @@
+#针对DAVID的富集分析
+library(ggplot2)
+library(tidyr)
+png("BP.png",600,300)  #宽、长   png一般1200，1500；pdf 一般12 15;
+
+pathway_raw=read.table("BP.txt",header=T,sep="\t",fill=TRUE,quote="") #读取数据
+
+#选取pad<0.05的值
+pathway <- pathway_raw[which(pathway_raw$FDR <= 0.05), ]
+colnames(pathway)
+
+pathway <- separate(pathway,Term,into = c("GO","Term"),sep = "~")
+
+pathway$a=-log(pathway$FDR) #定义一个数值  注意pathway接$来引用数值！
+
+
+p=ggplot(pathway,aes(a,Term))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+p=p+geom_point(aes(size=Count,color=-1*log10(a))) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
+         title="Statisics of GO Enrichment: BP")  #标签名称
+
+
+
+p=p+theme_bw() #去除灰色背景
+
+p
+dev.off()
+
+
+
