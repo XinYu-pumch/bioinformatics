@@ -1,0 +1,180 @@
+library(DESeq2)
+library("amap")
+library("ggplot2")
+library("BiocParallel")
+library("limma")
+library(ggrepel)
+library("PCAtools")
+
+#对于bioconductor中不能安装的包：自己下载并自己解压到对应文件夹即可
+#需要准备：1）counts martrix 2）sample martrix：第一列是sample name，第二列是batch，第三列是conditions（即BD HC）
+#注意引用sample的时候，stringsAsFactors=TRUE，即里面的character代表了分组的信息
+
+working_dir <- "/Users/郁欣/Desktop/生信/Rstudio working directory"
+data_file<- "/Users/郁欣/Desktop/生信/Rstudio working directory/test.txt"
+data<-read.table(data_file,header = T,sep ="\t",stringsAsFactors=FALSE,row.names = 1)
+head(data)
+sample_file<- "/Users/郁欣/Desktop/生信/Rstudio working directory/sample.txt"
+sample<-read.table(sample_file,header = T,sep ="\t",stringsAsFactors=TRUE,row.names = 1)
+head(sample)
+
+#处理sample matrix
+sample <- sample[match(colnames(data), rownames(sample)),, drop=F]
+sample_rowname <- rownames(sample)
+sample
+
+
+#产生DESeq数据集
+ddsFullCountTable <- DESeqDataSetFromMatrix(countData = data,colData = sample,  design = ~ batch + conditions)
+dds <- DESeq(ddsFullCountTable)
+
+normalized_counts <- counts(dds, normalized=TRUE)
+head(normalized_counts)
+
+normalized_counts_mad <- apply(normalized_counts, 1, mad)
+normalized_counts <- normalized_counts[order(normalized_counts_mad, decreasing=T), ]
+
+write.table(normalized_counts, file="normalized test.csv",quote=F, sep="\t", row.names=T, col.names=T)
+
+rld <- rlog(dds, blind=FALSE)
+rlogMat <- assay(rld)
+#对于非芯片的结果，是否需要limma处理？批次的问题仍然无法解决
+rlogMat <- limma::removeBatchEffect(rlogMat, c(sample$batch))
+rlogMat <- rlogMat[order(normalized_counts_mad, decreasing=T), ]
+write.table(rlogMat, file="normalized test-log.csv",quote=F, sep="\t", row.names=T, col.names=T)
+
+#PCA分析，此处用rlog法,且去除了batch effect
+rld <- rlog(dds, blind=FALSE)
+pca_data <- plotPCA(rld, intgroup=c("conditions","batch"), ntop=500)
+pca_data + geom_text_repel(aes(label = name), size = 3, box.padding = unit(0.5, 'lines'), show.legend = FALSE)
+head(pca_data)
+
+rld <- rlog(dds, blind=FALSE)
+assay(rld) <- limma::removeBatchEffect(assay(rld), c(sample$batch))
+pca_data <- plotPCA(rld, intgroup=c("conditions","batch"), ntop=500)
+pca_data + geom_text_repel(aes(label = name), size = 3, box.padding = unit(0.5, 'lines'), show.legend = FALSE)
+head(pca_data)
+
+#或者也可以vsd法
+vsd <- vst(dds, blind=FALSE)
+assay(vsd) <- limma::removeBatchEffect(assay(vsd), vsd$batch)
+##pca_data <- plotPCA(vsd, intgroup=c("conditions","batch"), ntop=500)
+##pca_data
+##head(pca_data)
+
+#热图分析
+library("pheatmap")
+ntd <- normTransform(dds)
+select <- order(rowMeans(counts(dds,normalized=TRUE)),
+                decreasing=TRUE)[1:20]
+df <- as.data.frame(colData(dds)[,c("conditions","batch")])
+pheatmap(assay(ntd)[select,], cluster_rows=FALSE, show_rownames=FALSE,
+         cluster_cols=FALSE, annotation_col=df)
+
+#样本距离
+sampleDists <- dist(t(assay(vsd)))
+library("RColorBrewer")
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(colnames(vsd))
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+
+
+
+
+#差异分析
+sampleA = "BD"
+sampleB = "HC"
+
+contrastV <- c("conditions", sampleA, sampleB)
+res <- results(dds,  contrast=contrastV)
+res
+
+##提取第一组均值
+baseA <- counts(dds, normalized=TRUE)[, colData(dds)$conditions == sampleA]
+
+if (is.vector(baseA)){
+  baseMeanA <- as.data.frame(baseA)
+} else {
+  baseMeanA <- as.data.frame(rowMeans(baseA))
+}
+colnames(baseMeanA) <- sampleA
+head(baseMeanA)
+
+##提取第二组均值
+baseB <- counts(dds, normalized=TRUE)[, colData(dds)$conditions == sampleB]
+if (is.vector(baseB)){
+  baseMeanB <- as.data.frame(baseB)
+} else {
+  baseMeanB <- as.data.frame(rowMeans(baseB))
+}
+colnames(baseMeanB) <- sampleB
+head(baseMeanB)
+##结果组合
+res <- cbind(baseMeanA, baseMeanB, as.data.frame(res))
+head(res)
+##增加ID信息
+res <- cbind(ID=rownames(res), as.data.frame(res))
+res$baseMean <- rowMeans(cbind(baseA, baseB))
+##校正后p-value为NA的复制为1
+res$padj[is.na(res$padj)] <- 1
+##按pvalue排序, 把差异大的基因放前面
+res <- res[order(res$pvalue),]
+head(res)
+
+#生成文件
+comp314 <- paste(sampleA, "_vs_", sampleB, sep=".")
+file_base <- paste("ehbio_trans.Count_matrix.xls.DESeq2", comp314, sep=".")
+file_base1 <- paste(file_base, "results.xls", sep=".")
+write.table(as.data.frame(res), file=file_base1, sep="\t", quote=F, row.names=F)
+
+
+# 差异基因筛选，padj<0.05
+res_de <- subset(res, res$padj<0.05, select=c('ID', sampleA,
+                                             sampleB, 'log2FoldChange', 'padj'))
+# foldchang > 0
+res_de_up <- subset(res_de, res_de$log2FoldChange>=0)
+
+file <- paste("ehbio_trans.Count_matrix.xls.DESeq2",sampleA,"_higherThan_",sampleB,
+              'xls', sep=".") 
+write.table(as.data.frame(res_de_up), file=file, sep="\t", quote=F, row.names=F)
+
+res_de_dw <- subset(res_de, res_de$log2FoldChange<=0)
+
+file <- paste("ehbio_trans.Count_matrix.xls.DESeq2",sampleA, "_lowerThan_", sampleB, 
+              'xls', sep=".") 
+write.table(as.data.frame(res_de_dw), file=file, sep="\t", quote=F, row.names=F)
+
+# 差异基因ID
+res_de_up_id = data.frame(ID=res_de_up$ID, 
+                          type=paste(sampleA,"_higherThan_", sampleB, sep="."))
+res_de_dw_id = data.frame(ID=res_de_dw$ID, 
+                          type=paste(sampleA,"_lowerThan_", sampleB, sep="."))
+de_id = rbind(res_de_up_id, res_de_dw_id)
+
+file <- "ehbio_trans.Count_matrix.xls.DESeq2.all.DE"
+write.table(as.data.frame(de_id), file=file, sep="\t", quote=F, row.names=F, col.names=F)
+
+#绘制火山图
+logCounts <- log2(res$baseMean+1)
+logFC <- res$log2FoldChange
+FDR <- res$padj
+png(filename=paste(file_base, "Volcano.png", sep="."))
+plot(logFC, -1*log10(FDR), col=ifelse(FDR<=0.05, "red", "black"),
+     xlab="logFC", ylab="-1*log1o(FDR)", main="Volcano plot", pch=".")
+dev.off()
+
+#差异基因热图
+res_de_up_top20_id <- as.vector(head(res_de_up$ID,100000))
+res_de_dw_top20_id <- as.vector(head(res_de_dw$ID,100000))
+
+red_de_top20 <- c(res_de_up_top20_id, res_de_dw_top20_id)
+red_de_top20
+red_de_top20_expr <- normalized_counts[rownames(normalized_counts) %in% red_de_top20,]
+red_de_top20_expr <- limma::removeBatchEffect(red_de_top20_expr, c(sample$batch))
+library(pheatmap)
+pheatmap(red_de_top20_expr, cluster_row=T, scale="row", annotation_col=sample)
