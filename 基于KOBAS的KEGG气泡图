@@ -1,0 +1,31 @@
+#首先先定义空间
+#针对北大的KEGG
+#注意需要对数据先处理，将下载的txt文件的表头手动去除了
+library(ggplot2) #载入ggplot2
+library(tidyr)
+png("KEGG.png",600,750)  #宽、长   png一般1200，1500；pdf 一般12 15;
+
+pathway_raw=read.table("KEGG.txt",header=T,sep="\t",fill=TRUE,quote="") #读取数据
+
+colnames(pathway_raw)
+
+pathway <- pathway_raw[which(pathway_raw$Corrected.P.Value <= 0.05), ]
+
+
+pathway$a=-log(pathway$Corrected.P.Value) #定义一个数值  注意pathway接$来引用数值！
+
+
+p=ggplot(pathway,aes(a,Term))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+p=p+geom_point(aes(size=Input.number,color=-1*log10(a)))  #点图大小和颜色数据
+p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",title="Statisics of GO Enrichment: KEGG") #标签名称
+
+
+
+p=p+theme_bw() #去除灰色背景
+
+p
+dev.off()
+
+
+
