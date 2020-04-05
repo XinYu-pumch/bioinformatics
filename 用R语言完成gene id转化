@@ -1,0 +1,20 @@
+library(org.Hs.eg.db)
+library("clusterProfiler")
+library("DOSE")
+library("ggplot2")
+library("tidyr")
+library(dplyr)
+
+#基因id转化,比如从ensembleid到gene symbol
+a <- read.csv("BD serum/DEseq2-DE_genes.csv", header = TRUE, sep = ",",quote="\"", dec=".",
+              fill = TRUE,comment.char="",row.names = 1)
+ENTREZID <- bitr(rownames(a), fromType = "ENSEMBL",
+                 toType = c("SYMBOL"),
+                 OrgDb = org.Hs.eg.db)
+#因为读取的时候rownames=1，故需要把rownames复制在列的最后，取名叫ensembl
+a$ENSEMBL <- rownames(a)
+#这样就可以根据ensembl匹配了
+data2<-dplyr::left_join(a,ENTREZID,by = "ENSEMBL")
+write.csv(data2,"BD serum/DEseq2-DE_genes2.csv")
+
+
