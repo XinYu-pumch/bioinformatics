@@ -1,0 +1,81 @@
+library("DESeq2")
+library("amap")
+library("ggplot2")
+library("BiocParallel")
+library("limma")
+library("ggrepel")
+library("PCAtools")
+library("RColorBrewer")
+
+
+#注意用来计算DE_gene的count是不要矫正的，矫正仅在于PCA和聚类（对DESeq2是如此
+#需要准备：1）counts martrix 2）sample martrix：第一列是sample name，第二列是batch，第三列是conditions（即BD HC）
+
+data <- read.csv("BD serum/BD-serum.csv", header = TRUE, sep = ",",quote="\"", dec=".",
+                 fill = TRUE,comment.char="",row.names = 1)
+sample <- read.csv("BD serum/sampleinfo.csv", 
+                   header = TRUE, sep = ",",
+                   quote="\"", dec=".", 
+                   fill = TRUE,comment.char="",
+                   stringsAsFactors=TRUE,
+                   row.names = 1)  #注意不要是数字而是字符，stringAsFactors和别的不一样
+
+#处理sample matrix
+sample <- sample[match(colnames(data), rownames(sample)),, drop=F]
+sample_rowname <- rownames(sample)
+sample
+#找差异基因
+ddsFullCountTable <- DESeqDataSetFromMatrix(countData = data,
+                                            colData = sample,  
+                                            design = ~ batch + condition)
+dds <- DESeq(ddsFullCountTable)
+res <- results(dds)
+res <- res[order(res$padj),]
+head(res)
+write.csv(res, "BD serum/DEseq2-DE_genes.csv")
+res_padj <- res[which(res$padj <= 0.05), ]
+
+
+#rlog化，基于rlog画样本间距离、热图、pca
+rld <- rlog(dds, blind=TRUE)
+rlogMat <- assay(rld)
+rlogMat <- rlogMat[which(rowSums(rlogMat==0)==0),]
+#对rld矫正，基于sva
+#注意sva法的矩阵是标准化过的
+modcombat = model.matrix(~1, data = sample)
+batch = sample$batch
+
+rlogMat = ComBat(dat=as.matrix(rlogMat), 
+              batch=batch, 
+              mod=modcombat, 
+              par.prior=TRUE, prior.plots=TRUE)
+head(rlogMat)
+dim(rlogMat)
+
+#PCA,选取前2000个标准擦汗最大的gene
+metadata <- data.frame(row.names = colnames(rlogMat))
+p <- PCAtools::pca(rlogMat, metadata = metadata, removeVar = (33916-1000)/33916)
+biplot(p)
+
+#热图。此处用rlog数据，且选取了差异基因
+rlogMat2 <- rlogMat[match(rownames(res_padj), rownames(rlogMat)),, drop=F]
+pheatmap(rlogMat2, cluster_row=T, scale="row", 
+         annotation_col=sample['condition'])
+
+#样本间距离
+sampleDists <- dist(t(rlogMat))
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(colnames(rlogMat))
+colnames(sampleDistMatrix) <- paste(colnames(rlogMat))
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+
+#修改热图
+write.csv(rlogMat2, "BD serum/rlogMat2.csv")
+rlogMat3 <- read.csv("BD serum/rlogMat2.csv", header = TRUE, sep = ",",quote="\"", dec=".",
+                 fill = TRUE,comment.char="",row.names = 1)
+pheatmap(rlogMat3, cluster_row=T, scale="row", 
+         annotation_col=sample['condition'])
