@@ -77,6 +77,7 @@ GO <- GO[which(GO$p.adjust <= 0.05), ]
 GO <- GO[1:20,]
 GO <-na.omit(GO)
 GO$a=-log(GO$p.adjust) #定义一个数值  注意pathway接$来引用数值！
+png("CC.png",600,300)
 p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
 p=p+geom_point(aes(size=Count,color=-1*log10(a))) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
 p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
@@ -100,7 +101,7 @@ p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴�
 p=p+geom_point(aes(size=Count,color=-1*log10(a))) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
 p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
 p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
-         title="Statisics of GO Enrichment")  #标签名称
+         title="Statisics of KEGG Enrichment")  #标签名称
 p=p+theme_bw() #去除灰色背景
 p
 while (!is.null(dev.list()))  dev.off()
