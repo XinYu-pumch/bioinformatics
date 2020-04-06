@@ -6,27 +6,29 @@ library(tidyr)
 
 #一步法得到分析，教程：https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247484594&idx=1&sn=77c8a84ceaae6b672f198ebd531c21e4&scene=21#wechat_redirect
 #首先准备genelist
-a <- read.csv("BD serum/DEseq2-DE_genes.csv", header = TRUE, sep = ",",quote="\"", dec=".",
-                     fill = TRUE,comment.char="",row.names = 1)
+a <- read.csv("BD NETs/DEseq2-DE_genes.csv", header = TRUE, sep = ",",quote="\"", dec=".",
+              fill = TRUE,comment.char="",row.names = 1)
 a <- a[which(a$padj <= 0.05), ]
 
 #将rowname转化，注意此处推荐entrez id
 #将entrez id提取出来，变成一个向量
 ENTREZID <- bitr(rownames(a), fromType = "ENSEMBL",
-                toType = c("ENTREZID"),
-                OrgDb = org.Hs.eg.db)
+                 toType = c("ENTREZID"),
+                 OrgDb = org.Hs.eg.db)
 ENTREZID <- ENTREZID$ENTREZID
-
+head(ENTREZID)
 #开始富集分析，以下代码无脑跑即可
 #BP富集分析
 BP <- enrichGO(ENTREZID, "org.Hs.eg.db", ont = "BP",
                pAdjustMethod = "BH", pvalueCutoff  = 0.05,
                qvalueCutoff  = 0.05, readable=T)
 #对结果精简
-result <- simplify(BP, cutoff=0.05, by="p.adjust", select_fun=min)
+#此处的cutoff，指的不是GO的矫正p，而是不同term之间的相似程度；默认0.7即可
+result <- simplify(BP, cutoff=0.7, by="p.adjust", select_fun=min)
 #继续精简，选取p.adj《0.05的前20个
 GO <- result@result
 GO <- GO[order(GO$p.adjust),]
+GO <- GO[which(GO$p.adjust <= 0.05), ]
 GO <- GO[1:20,]
 GO <-na.omit(GO)
 #画图
@@ -45,10 +47,11 @@ while (!is.null(dev.list()))  dev.off()
 MF <- enrichGO(ENTREZID, "org.Hs.eg.db", ont = "MF",
                pAdjustMethod = "BH", pvalueCutoff  = 0.05,
                qvalueCutoff  = 0.05, readable=T)
-result <- simplify(MF, cutoff=0.05, by="p.adjust", select_fun=min)
+result <- simplify(MF, cutoff=0.7, by="p.adjust", select_fun=min)
 #继续精简，选取p.adj《0.05的前20个
 GO <- result@result
 GO <- GO[order(GO$p.adjust),]
+GO <- GO[which(GO$p.adjust <= 0.05), ]
 GO <- GO[1:20,]
 GO <-na.omit(GO)
 png("MF.png",600,300)
@@ -66,13 +69,13 @@ while (!is.null(dev.list()))  dev.off()
 CC <- enrichGO(ENTREZID, "org.Hs.eg.db", ont = "CC",
                pAdjustMethod = "BH", pvalueCutoff  = 0.05,
                qvalueCutoff  = 0.05, readable=T)
-result <- simplify(CC, cutoff=0.05, by="p.adjust", select_fun=min)
+result <- simplify(CC, cutoff=0.7, by="p.adjust", select_fun=min)
 #继续精简，选取p.adj《0.05的前20个
 GO <- result@result
 GO <- GO[order(GO$p.adjust),]
+GO <- GO[which(GO$p.adjust <= 0.05), ]
 GO <- GO[1:20,]
 GO <-na.omit(GO)
-png("CC.png",600,300)
 GO$a=-log(GO$p.adjust) #定义一个数值  注意pathway接$来引用数值！
 p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
 p=p+geom_point(aes(size=Count,color=-1*log10(a))) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
@@ -88,6 +91,7 @@ kk <- enrichKEGG(ENTREZID, organism="hsa", pvalueCutoff=0.05, pAdjustMethod="BH"
                  qvalueCutoff=0.05)
 GO <- kk@result
 GO <- GO[order(GO$p.adjust),]
+GO <- GO[which(GO$p.adjust <= 0.05), ]
 GO <- GO[1:20,]
 GO <-na.omit(GO)
 png("KEGG.png",600,300)
@@ -96,7 +100,7 @@ p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴�
 p=p+geom_point(aes(size=Count,color=-1*log10(a))) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
 p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
 p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
-         title="Statisics of KEGG Enrichment")  #标签名称
+         title="Statisics of GO Enrichment")  #标签名称
 p=p+theme_bw() #去除灰色背景
 p
 while (!is.null(dev.list()))  dev.off()
