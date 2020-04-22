@@ -9,7 +9,7 @@ library(tidyr)
 a <- read.csv("BD NETs/DEseq2-DE_genes.csv", header = TRUE, sep = ",",quote="\"", dec=".",
               fill = TRUE,comment.char="",row.names = 1)
 a <- a[which(a$padj <= 0.05), ]
-
+a <- a[which(abs(a$log2FoldChange) >= 1), ]
 #将rowname转化，注意此处推荐entrez id
 #将entrez id提取出来，变成一个向量
 ENTREZID <- bitr(rownames(a), fromType = "ENSEMBL",
@@ -38,7 +38,7 @@ p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴�
 p=p+geom_point(aes(size=Count,color=-1*log10(a))) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
 p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
 p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
-         title="Statisics of GO Enrichment")  #标签名称
+         title="Statisics of GO Enrichment: BP")  #标签名称
 p=p+theme_bw() #去除灰色背景
 p
 while (!is.null(dev.list()))  dev.off()
@@ -60,7 +60,7 @@ p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴�
 p=p+geom_point(aes(size=Count,color=-1*log10(a))) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
 p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
 p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
-         title="Statisics of GO Enrichment")  #标签名称
+         title="Statisics of GO Enrichment: MF")  #标签名称
 p=p+theme_bw() #去除灰色背景
 p
 while (!is.null(dev.list()))  dev.off()
@@ -82,7 +82,7 @@ p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴�
 p=p+geom_point(aes(size=Count,color=-1*log10(a))) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
 p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
 p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
-         title="Statisics of GO Enrichment")  #标签名称
+         title="Statisics of GO Enrichment: CC")  #标签名称
 p=p+theme_bw() #去除灰色背景
 p
 while (!is.null(dev.list()))  dev.off()
