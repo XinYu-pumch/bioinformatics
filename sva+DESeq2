@@ -80,7 +80,7 @@ rlogMat3 <- read.csv("BD serum/rlogMat2.csv", header = TRUE, sep = ",",quote="\"
 pheatmap(rlogMat3, cluster_row=T, scale="row", 
          annotation_col=sample['condition'])
          
-#火山图
+#火山图，参考http://blog.sciencenet.cn/blog-3406804-1188483.html
 #本质就是散点图
 #注意label需要自己填写上调、下调的基因数，没做到智能
 
