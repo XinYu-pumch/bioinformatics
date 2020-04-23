@@ -59,8 +59,27 @@ biplot(p)
 
 #热图。此处用rlog数据，且选取了差异基因
 rlogMat2 <- rlogMat[match(rownames(res_padj), rownames(rlogMat)),, drop=F]
+
+row.names(rlogMat2) = unlist(lapply(row.names(rlogMat2),function(x){
+  a = " "
+} 
+)
+)
+
 pheatmap(rlogMat2, cluster_row=T, scale="row", 
-         annotation_col=sample['condition'])
+         annotation_col=sample['condition'],
+         fontsize_row = 6)
+
+#也可以选取前60各基因画热图
+rlogMat2 <- rlogMat[match(rownames(res_padj[1:60,]), rownames(rlogMat)),, drop=F]
+symbol <- bitr(rownames(rlogMat2), fromType = "ENSEMBL",
+                 toType = c("SYMBOL"),
+                 OrgDb = org.Hs.eg.db)
+rownames(rlogMat2) <- symbol$SYMBOL
+pheatmap(rlogMat2, cluster_row=T, scale="row", 
+         annotation_col=sample['condition'],
+         fontsize_row = 8)
+
 
 #样本间距离
 sampleDists <- dist(t(rlogMat))
