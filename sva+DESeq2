@@ -36,6 +36,14 @@ write.csv(res, "BD serum/DEseq2-DE_genes.csv")
 res_padj <- res[which(res$padj <= 0.05), ]
 
 
+#合并count和差异分析的结果。注意count虽然是input，但直观的比较仍然需要tpm或fpkm等，所以可以继续引入fpkm来合并
+t <- read.csv("BD serum/DEseq2-DE_genes.csv", header = TRUE, sep = ",",quote="\"", dec=".",
+                 fill = TRUE,comment.char="",row.names = 1)
+t$name <- rownames(t)
+data$name <- rownames(data)
+a <- merge(data, t, by="name")
+write.csv(res, "BD serum/DEseq2-DE_genes-conbined.csv")
+
 #rlog化，基于rlog画样本间距离、热图、pca
 rld <- rlog(dds, blind=TRUE)
 rlogMat <- assay(rld)
