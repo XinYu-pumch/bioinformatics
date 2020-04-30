@@ -1,0 +1,125 @@
+#TF调控网络分析的R包
+library(dplyr)
+library('plyr')
+# 载入对应的包。
+
+# 设置显著性水平。整个文件可以无脑直接跑，只需要调整fdr、cor_value以及工作目录即可（可以fdr和cor_value阈值放得很高，后期再手动调节）
+fdr = 0.05
+cor_value = 0.5
+
+# 载入对应的working place
+#working_dir <- "/Users/zhangqiuxue/Documents/Train/TCGA/TF/lab/TF_network"
+#setwd(working_dir)
+
+# 载入对应的文件（gene list；相关性文件；tf list；tfbs-描述tf结合位点的文件）
+#DEG_genes_file <- "/Users/郁欣/Desktop/生信/Rstudio working directory/TF_network/DE_genes.txt"
+#DEG_genes_cors_file <-"/Users/郁欣/Desktop/生信/Rstudio working directory/TF_network/Gene_cors.txt"
+#tf_list_file <- "/Users/郁欣/Desktop/生信/Rstudio working directory/TF_network/jaspar_2018_human.txt"
+#tfbs_file <- "/Users/郁欣/Desktop/生信/Rstudio working directory/TF_network/TFBS.txt"
+
+# 读取
+pbmc <- read.csv("tem/all_compare-PBMC bulk-RNA.csv", header = TRUE, sep = ",",quote="\"", dec=".",
+                 fill = TRUE,comment.char="",row.names = 1)
+pbmc_up <- pbmc[which(pbmc$gene_biotype == "protein_coding"), ]
+pbmc_up <- pbmc_up[which(pbmc_up$BDVvsHC_padj <= 0.05), ]
+pbmc_up <- pbmc_up[which(abs(pbmc_up$BDVvsHC_log2FoldChange) >= 1), ]
+DEG_genes <- matrix(pbmc_up$gene_name)
+rownames(DEG_genes) <- pbmc_up$gene_name
+
+
+# 读取转录因子注释文件
+tf_list <- read.table("TF_network/jaspar_2018_human.txt", header=TRUE, stringsAsFactors=FALSE)
+# 构建基因名称和meme对应关系
+tf_list$meme <- paste(tf_list$Base_ID,tf_list$Version,sep = '.') 
+# 筛选出差异表达的TF
+diff_genes <- rownames(DEG_genes)
+length(diff_genes)
+diff_tfs <-  diff_genes[diff_genes %in% tf_list$Name]
+diff_tfs_number <- length(diff_tfs)
+diff_tfs_number
+
+# 读取TF结合位点的预测结果
+# 被靶向的基因
+tfbs <- read.table("TF_network/TFBS.txt", header=TRUE, stringsAsFactors=FALSE)
+total_genes = length(unique(tfbs$sequence_name))
+diff_gene_number = dim(DEG_genes)[1]
+diff_gene_number
+total_genes
+# enrich function 设置一个超几何分布，看筛选出来的DE_TF对应哪些gene，这些gene是否能在DE_GENE中富集
+enrich <- function(x){
+  # 转录因子调控的所有基因
+  total_targets <- tfbs[tfbs$pattern_name == x, ]
+  total_targets_unique <- unique(total_targets$sequence_name)
+  total_targets_number <-length(total_targets_unique)
+  # 转录因子调控的差异表达基因
+  diff_targets <- total_targets_unique[total_targets_unique %in% diff_genes]
+  diff_targets_number <- length(diff_targets)
+  # 超几何分布检验转录因子靶基因的富集情况
+  p_value <- 1-phyper(diff_targets_number-1,total_targets_number,total_genes-total_targets_number,diff_gene_number)
+  # 将返还结果整理成为一个表格
+  enrichment <- data.frame('total_genes' = total_genes,
+                           'total_taget_genes' = total_targets_number,
+                           'diff_genes' = diff_gene_number,
+                           'diff_targets' = diff_targets_number,
+                           'pvalue' = p_value)
+  return(enrichment)
+}
+
+# 举个例子
+enrich("MEOX1")
+
+enrich_results <- lapply(diff_tfs, enrich)
+# 结果汇总，形成一个dataframe
+enrich_result <- ldply(enrich_results, data.frame)
+rownames(enrich_result) <- diff_tfs
+#对p值进行多重校验（变成adj_p）
+enrich_result$q_value = p.adjust(enrich_result$pvalue)
+enriched_tfs <- rownames(enrich_result)
+# 得到第一个结果：enrich.txt
+write.table(enrich_result, file = "tem/TF/tf_enrich.txt",sep="\t", row.names =T, quote = F)
+
+#此处不用超几何分布进行筛选，认为TF和在DEG中的下游预测靶基因 只需要用相关性筛选即可
+a <- tfbs[match(rownames(enrich_result), tfbs$pattern_name),, drop=F]
+a <- tfbs[which(tfbs$pattern_name == "MAFF"), ]
+a <- a[match(rownames(DEG_genes), a$sequence_name),, drop=F]
+a <- na.omit(a)
+
+
+
+#自己构建网络相关性矩阵
+rownames(pbmc_up) <- pbmc_up$gene_name
+pbmc_up <- pbmc_up[which(pbmc_up$gene_name != "SCO2"), ]
+rownames(pbmc_up) <- pbmc_up$gene_name
+pbmc_cor <- pbmc_up[,-11]
+pbmc_cor <- pbmc_cor[,-11]
+pbmc_cor <- pbmc_cor[,-11]
+pbmc_cor <- pbmc_cor[,1:16]
+pbmc_cor <- t(pbmc_cor)
+DEG_genes_cors <- cor(pbmc_cor)
+
+
+
+# 设立第二个函数，此处仍然是超几何分布（目的是进行第二次筛选：如果TF和富集出来的gene在样本中的相关性过低，则仍然剔除！）
+network <- function(x){
+  # TF调控得所有gene
+  total_targets <- tfbs[tfbs$pattern_name == x, ]
+  total_targets_unique <- unique(total_targets$sequence_name)
+  # TF调控得差异表达基因
+  diff_targets <- total_targets_unique[total_targets_unique %in% diff_genes]
+  diff_targets_number <- length(diff_targets)
+  # 根据相关性筛选
+  tf_cor_target <- diff_targets[cor_value < abs(DEG_genes_cors[diff_targets,x])]
+  # 整理返还信息为一个table
+  edges <- data.frame('tf' = rep(x, length(tf_cor_target)),
+                      'tf_cor_target' =tf_cor_target,
+                      'tf_target_cor' = DEG_genes_cors[tf_cor_target,x])
+  return(edges)
+}
+
+
+edges_results <- lapply(enriched_tfs, network)
+# 结果汇总
+network_result <- ldply(edges_results, data.frame)
+head(network_result)
+# 得到第二个文件network txt，进行下一步cytoscape的分析
+write.csv(network_result, file = "tem/TF/network.csv")
