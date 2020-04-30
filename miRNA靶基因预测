@@ -1,0 +1,51 @@
+#BiocManager::install("multiMiR")
+#install.packages("formatR")
+
+library("multiMiR")
+library("VennDiagram")
+
+#最好用accession，可以去mirbase.org找
+#https://www.dxy.cn/bbs/newweb/pc/post/42276210
+#http://bioconductor.org/packages/release/bioc/vignettes/multiMiR/inst/doc/multiMiR.html#71_example_1:_retrieve_all_validated_target_genes_of_a_given_mirna
+
+
+
+#找已知的靶基因
+validated_target <- get_multimir(mirna = 'MIMAT0025458', summary = TRUE)
+validated_target_data <- validated_target@data
+write.csv(validated_target_data, "tem/target/validated_data.csv")
+##继续找用luciferase验证过的靶基因
+validated_target_luciferase <- validated_target@data[grep("Luciferase", validated_target@data[, "experiment"]), ]
+
+
+#预测已知的靶基因,最好关闭vpn
+pre_target <- get_multimir(mirna = "MIMAT0025458",table = "predicted",summary = TRUE, use.tibble = TRUE)
+pre_target_data <- pre_target@data
+write.csv(pre_target_data, "tem/target/pre_target_data.csv")
+
+#可以进一步用文氏图分析
+pbmc <- read.csv("tem/all_compare-PBMC bulk-RNA.csv", header = TRUE, sep = ",",quote="\"", dec=".",
+                 fill = TRUE,comment.char="",row.names = 1)
+pbmc_up <- pbmc[which(pbmc$gene_biotype == "protein_coding"), ]
+pbmc_up <- pbmc_up[which(pbmc_up$BDVvsHC_padj <= 0.05), ]
+pbmc_up <- pbmc_up[which(pbmc_up$BDVvsHC_log2FoldChange >= 1), ]
+
+T<-venn.diagram(list(up_genes_PBMC=pbmc_up$gene_name,
+                     validated_targets=validated_target_data$target_symbol,
+                     predicted_targets=pre_target_data$target_symbol),filename=NULL
+                ,lwd=1,lty=2,col=c('red','green','blue')
+                ,fill=c('red','green','blue')
+                ,cat.col=c('red','green','blue')
+                ,reverse=TRUE)
+grid.draw(T)
+##求交集
+pbmc_and_validated <- intersect(x=pbmc_up$gene_name, y = validated_target_data$target_symbol)
+pbmc_and_pre <- intersect(x=pbmc_up$gene_name, y = pre_target_data$target_symbol)
+pbmc_and_pre_and_validated <- intersect(x=pbmc_and_validated, y = pbmc_and_pre)
+
+combined_results_list <- list(pbmc_and_validated, pbmc_and_pre, pbmc_and_pre_and_validated)
+combined_results <- do.call(cbind, 
+                     lapply(lapply(combined_results_list, unlist), `length<-`, 
+                            max(lengths(combined_results_list))))
+colnames(combined_results) <- c("pbmc_and_validated", "pbmc_and_pre","pbmc_and_pre_and_validated")
+write.csv(combined_results, "tem/target/combined_results.csv")
