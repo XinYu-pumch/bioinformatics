@@ -6,6 +6,11 @@ sudo apt-get update
 sudo apt-get upgrade
 
 #先安装R语言,参考：https://linuxize.com/post/how-to-install-r-on-ubuntu-18-04/
+sudo apt install apt-transport-https software-properties-common
+sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys E298A3A825C0D65DFD57CBB651716619E084DAB9
+sudo add-apt-repository 'deb https://cloud.r-project.org/bin/linux/ubuntu bionic-cran35/'
+sudo apt update
+sudo apt install r-base
 
 #安装python2
 sudo apt install python
@@ -21,6 +26,8 @@ pip install -i https://pypi.tuna.tsinghua.edu.cn/simple scipy
 pip install -i https://pypi.tuna.tsinghua.edu.cn/simple rpy2==2.8.6
 ##对于matplotlib,可能需要:
 sudo apt-get install python-dev
+#
+sudo apt-get install -y python-matplotlib
 pip list #查看pip安装的包
 
 
