@@ -1,9 +1,24 @@
+#安装open-vm-tools
+#安装vim
+apt-get install open-vm-tools-desktop fuse 或者 apt-get install open-vm-tools-desktop -y
+apt-get install vim
+
+#重装open-vm-tools
+sudo apt-get autoremove open-vm-tools
+sudo apt-get install open-vm-tools
+sudo apt-get install open-vm-tools-desktop
+
+
+
 #vim修改源
 sudo vim /etc/apt/sources.list
 ## i进入编辑，esc，gg-移到首行，V-进入可视模式，G-移到最后一行，d删除所选，i-插入，添加清华的源：https://mirror.tuna.tsinghua.edu.cn/help/ubuntu/
 ##:wq保存退出，更新二连：
 sudo apt-get update
 sudo apt-get upgrade
+###没有vim则：
+sudo gedit /etc/apt/sources.list
+
 
 #先安装R语言,参考：https://linuxize.com/post/how-to-install-r-on-ubuntu-18-04/
 sudo apt install apt-transport-https software-properties-common
@@ -11,6 +26,7 @@ sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys E298A3A825C0D65DFD
 sudo add-apt-repository 'deb https://cloud.r-project.org/bin/linux/ubuntu bionic-cran35/'
 sudo apt update
 sudo apt install r-base
+sudo apt-get install gsettings-desktop-schemas  #期间可能需要这个
 
 #安装python2
 sudo apt install python
@@ -26,17 +42,13 @@ pip install -i https://pypi.tuna.tsinghua.edu.cn/simple scipy
 pip install -i https://pypi.tuna.tsinghua.edu.cn/simple rpy2==2.8.6
 ##对于matplotlib,可能需要:
 sudo apt-get install python-dev
-#
+#当然也可以直接
 sudo apt-get install -y python-matplotlib
 pip list #查看pip安装的包
 
-
-
-
+#开始分析
 cd /mnt/c/Users/郁欣/Desktop/metabolyzer
+cd ~/Desktop/ana
 python metaboLyzer_v7.2.0.spec.py BD.csv HC.csv
 python-is-python3 metaboLyzer_v7.2.0.spec.py BD.csv HC.csv
 
-
-
-sudo pip install numpy --ignore-installed numpy
