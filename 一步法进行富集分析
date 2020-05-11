@@ -18,6 +18,8 @@ ENTREZID <- bitr(rownames(a), fromType = "ENSEMBL",
 ENTREZID <- ENTREZID$ENTREZID
 head(ENTREZID)
 #开始富集分析，以下代码无脑跑即可
+
+
 #BP富集分析
 BP <- enrichGO(ENTREZID, "org.Hs.eg.db", ont = "BP",
                pAdjustMethod = "BH", pvalueCutoff  = 0.05,
@@ -35,7 +37,7 @@ GO <-na.omit(GO)
 png("BP.png",600,300)
 GO$a=-log(GO$p.adjust) #定义一个数值  注意pathway接$来引用数值！
 p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
-p=p+geom_point(aes(size=Count,color=-1*log10(a))) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+geom_point(aes(size=Count,color=a)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
 p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
 p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
          title="Statisics of GO Enrichment: BP")  #标签名称
@@ -57,7 +59,7 @@ GO <-na.omit(GO)
 png("MF.png",600,300)
 GO$a=-log(GO$p.adjust) #定义一个数值  注意pathway接$来引用数值！
 p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
-p=p+geom_point(aes(size=Count,color=-1*log10(a))) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+geom_point(aes(size=Count,color=a)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
 p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
 p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
          title="Statisics of GO Enrichment: MF")  #标签名称
@@ -79,7 +81,7 @@ GO <-na.omit(GO)
 GO$a=-log(GO$p.adjust) #定义一个数值  注意pathway接$来引用数值！
 png("CC.png",600,300)
 p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
-p=p+geom_point(aes(size=Count,color=-1*log10(a))) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+geom_point(aes(size=Count,color=a)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
 p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
 p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
          title="Statisics of GO Enrichment: CC")  #标签名称
@@ -98,7 +100,7 @@ GO <-na.omit(GO)
 png("KEGG.png",600,300)
 GO$a=-log(GO$p.adjust) #定义一个数值  注意pathway接$来引用数值！
 p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
-p=p+geom_point(aes(size=Count,color=-1*log10(a))) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+geom_point(aes(size=Count,color=a)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
 p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
 p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
          title="Statisics of KEGG Enrichment")  #标签名称
