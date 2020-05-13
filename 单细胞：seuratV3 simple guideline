@@ -10,6 +10,7 @@
 #代码正式开始
 
 #注意seurat是V3版本
+#将object从V2变成V3，可以用UpdateSeuratObject
 library(Seurat)
 library(ggplot2)
 library(cowplot)
