@@ -1,0 +1,324 @@
+library("DESeq2")
+library("amap")
+library("ggplot2")
+library("BiocParallel")
+library("limma")
+library("ggrepel")
+library("PCAtools")
+library("RColorBrewer")
+library("pheatmap")
+library(org.Hs.eg.db)
+library("clusterProfiler")
+library("DOSE")
+library("tidyr")
+
+# 有时图片无法显示，可以用如下代码
+dev.off()
+while (!is.null(dev.list()))  dev.off()
+#准备
+.libPaths(c("C:/R lib",
+            "C:/Users/郁欣/Documents/R/win-library/3.6"))
+
+#针对all_compare的直接处理
+#注意用来计算DE_gene的count是不要矫正的，矫正仅在于PCA和聚类（对DESeq2是如此
+#需要准备：1）counts martrix 2）sample martrix：第一列是sample name，第二列是batch，第三列是conditions（即BD HC）
+
+raw_data <- read.csv("BD-N/all_compare.csv", header = TRUE, sep = ",",quote="\"", dec=".",
+                     fill = TRUE,comment.char="",row.names = 1)
+raw_data <- raw_data[which(raw_data$gene_biotype == "protein_coding"), ]
+
+data <- data.frame(BD1=raw_data$BD1_count,
+                   BD2=raw_data$BD2_count,
+                   BD3=raw_data$BD3_count,
+                   BD4=raw_data$BD4_count,
+                   HC1=raw_data$HC1_count,
+                   HC2=raw_data$HC2_count,
+                   HC3=raw_data$HC3_count,
+                   HC4=raw_data$HC4_count)
+rownames(data)<-rownames(raw_data)
+sample <- data.frame(condition=c("BD","BD","BD","BD","HC","HC","HC","HC"))
+rownames(sample)<-colnames(data)
+
+
+#处理sample matrix
+sample <- sample[match(colnames(data), rownames(sample)),, drop=F]
+sample_rowname <- rownames(sample)
+sample
+
+#找差异基因
+ddsFullCountTable <- DESeqDataSetFromMatrix(countData = data,
+                                            colData = sample,  
+                                            design = ~ condition)
+dds <- DESeq(ddsFullCountTable)
+res <- results(dds)
+res <- res[order(res$padj),]
+head(res)
+write.csv(res, "BD-N/DEseq2-DE_genes.csv")
+t <- read.csv("BD-N/DEseq2-DE_genes.csv", header = TRUE, sep = ",",quote="\"", dec=".",
+              fill = TRUE,comment.char="",row.names = 1)
+res_padj <- t[which(t$padj <= 0.05), ]
+res_padj <- res_padj[which(abs(res_padj$log2FoldChange) >= 1), ]
+
+
+
+#rlog化，基于rlog画样本间距离、热图、pca
+rld <- rlog(dds, blind=TRUE)
+rlogMat <- assay(rld)
+rlogMat <- rlogMat[which(rowSums(rlogMat==0)==0),]
+dim(rlogMat)
+
+
+#PCA,选取前2000个标准擦汗最大的gene
+metadata <- data.frame(row.names = colnames(rlogMat))
+p <- PCAtools::pca(rlogMat, metadata = metadata, removeVar = (1-2000/16500))
+p <- biplot(p)
+p
+#while (!is.null(dev.list()))  dev.off()
+
+#热图。此处用rlog数据，且选取了差异基因，比如前50个
+rlogMat2 <- rlogMat[match(rownames(res_padj), rownames(rlogMat)),, drop=F]
+raw_data2 <- raw_data[match(rownames(res_padj), rownames(raw_data)),, drop=F]
+rlogMat2 <- rlogMat2[1:50,]
+raw_data2 <- raw_data2[1:50,]
+rownames(rlogMat2)<-raw_data2$gene_name
+pheatmap(rlogMat2, cluster_row=T, scale="row", 
+         annotation_col=sample['condition'],
+         fontsize_row = 6)
+
+
+#样本间距离
+sampleDists <- dist(t(rlogMat))
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(colnames(rlogMat))
+colnames(sampleDistMatrix) <- paste(colnames(rlogMat))
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+
+
+
+
+#火山图
+#本质就是散点图
+#注意label需要自己填写上调、下调的基因数
+c <- t
+c[which(c$padj < 0.05 & c$log2FoldChange <= -1),'DEGs'] <- 'up'
+c[which(c$padj < 0.05 & c$log2FoldChange >= 1),'DEGs'] <- 'down'
+c[!(c$DEGs %in% c('up', 'down')),'DEGs'] <- 'no'
+
+nrow(c[which(c$DEGs == 'up'), ])
+nrow(c[which(c$DEGs == 'down'), ])
+
+p1 <- ggplot(c, aes(x = -1*log2FoldChange, y = -1*log10(pvalue))) +
+  geom_point(aes(color = DEGs), size = 2) +
+  scale_colour_manual(limits = c('up', 'down', 'no'), values = c('red', 'blue', 'gray40'), labels = c('Up DEGs: 702' , 'Down DEGs: 85', 'Others')) +
+  labs(x = 'log2 Fold Change', y = '-log10 p-value') +
+  geom_hline(yintercept = 2, color = 'gray', linetype = 2, size = 0.5) + 
+  geom_vline(xintercept = c(-2,2), color = 'gray', linetype = 2, size = 0.5)+
+  theme(legend.title = element_blank(), legend.key = element_rect(fill = 'transparent'), legend.background = element_rect(fill = 'transparent'))
+p1           
+
+#
+t2 <- t
+t2$id <- rownames(t2)
+raw_data$id <- rownames(raw_data)
+res_combined <- merge(t2,raw_data, by="id")
+write.csv(res_combined, "BD-N/DEseq2-DE_genes_combined.csv")
+
+
+#富集分析
+library(org.Hs.eg.db)
+library("clusterProfiler")
+library("DOSE")
+library(ggplot2)
+library(tidyr)
+
+ENTREZID <- bitr(rownames(res_padj), fromType = "ENSEMBL",
+                 toType = c("ENTREZID"),
+                 OrgDb = org.Hs.eg.db)
+ENTREZID <- ENTREZID$ENTREZID
+head(ENTREZID)
+#开始富集分析，以下代码无脑跑即可
+
+
+#BP富集分析
+BP <- enrichGO(ENTREZID, "org.Hs.eg.db", ont = "BP",
+               pAdjustMethod = "BH", pvalueCutoff  = 0.05,
+               qvalueCutoff  = 0.05, readable=T)
+#对结果精简
+#此处的cutoff，指的不是GO的矫正p，而是不同term之间的相似程度；默认0.7即可
+result <- simplify(BP, cutoff=0.7, by="p.adjust", select_fun=min)
+#继续精简，选取p.adj《0.05的前20个
+GO <- result@result
+GO <- GO[order(GO$p.adjust),]
+GO <- GO[which(GO$p.adjust <= 0.05), ]
+GO <- GO[1:20,]
+GO <-na.omit(GO)
+#画图
+png("BP.png",600,300)
+GO$a=-log(GO$p.adjust) #定义一个数值  注意pathway接$来引用数值！
+p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+p=p+geom_point(aes(size=Count,color=a)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
+         title="Statisics of GO Enrichment: BP")  #标签名称
+p=p+theme_bw() #去除灰色背景
+p
+while (!is.null(dev.list()))  dev.off()
+
+#MF
+MF <- enrichGO(ENTREZID, "org.Hs.eg.db", ont = "MF",
+               pAdjustMethod = "BH", pvalueCutoff  = 0.05,
+               qvalueCutoff  = 0.05, readable=T)
+result <- simplify(MF, cutoff=0.7, by="p.adjust", select_fun=min)
+#继续精简，选取p.adj《0.05的前20个
+GO <- result@result
+GO <- GO[order(GO$p.adjust),]
+GO <- GO[which(GO$p.adjust <= 0.05), ]
+GO <- GO[1:20,]
+GO <-na.omit(GO)
+png("MF.png",600,300)
+GO$a=-log(GO$p.adjust) #定义一个数值  注意pathway接$来引用数值！
+p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+p=p+geom_point(aes(size=Count,color=a)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
+         title="Statisics of GO Enrichment: MF")  #标签名称
+p=p+theme_bw() #去除灰色背景
+p
+while (!is.null(dev.list()))  dev.off()
+
+#CC
+CC <- enrichGO(ENTREZID, "org.Hs.eg.db", ont = "CC",
+               pAdjustMethod = "BH", pvalueCutoff  = 0.05,
+               qvalueCutoff  = 0.05, readable=T)
+result <- simplify(CC, cutoff=0.7, by="p.adjust", select_fun=min)
+#继续精简，选取p.adj《0.05的前20个
+GO <- result@result
+GO <- GO[order(GO$p.adjust),]
+GO <- GO[which(GO$p.adjust <= 0.05), ]
+GO <- GO[1:20,]
+GO <-na.omit(GO)
+GO$a=-log(GO$p.adjust) #定义一个数值  注意pathway接$来引用数值！
+png("CC.png",600,300)
+p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+p=p+geom_point(aes(size=Count,color=a)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
+         title="Statisics of GO Enrichment: CC")  #标签名称
+p=p+theme_bw() #去除灰色背景
+p
+while (!is.null(dev.list()))  dev.off()
+
+#KEGG
+kk <- enrichKEGG(ENTREZID, organism="hsa", pvalueCutoff=0.05, pAdjustMethod="BH", 
+                 qvalueCutoff=0.05)
+GO <- kk@result
+GO <- GO[order(GO$p.adjust),]
+GO <- GO[which(GO$p.adjust <= 0.05), ]
+GO <- GO[1:20,]
+GO <-na.omit(GO)
+png("KEGG.png",1200,400)
+GO$a=-log(GO$p.adjust) #定义一个数值  注意pathway接$来引用数值！
+p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+p=p+geom_point(aes(size=Count,color=a)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
+         title="Statisics of KEGG Enrichment")  #标签名称
+p=p+theme_bw() #去除灰色背景
+p
+while (!is.null(dev.list()))  dev.off()
+write.csv(GO, "BD-N/KEGG.csv")
+
+
+
+#TF分析
+library(dplyr)
+library('plyr')
+fdr = 0.05
+cor_value = 0.5
+
+DEG_genes <- res_combined[which(res_combined$gene_biotype == "protein_coding"), ]
+DEG_genes <- DEG_genes[which(DEG_genes$padj <= 0.05), ]
+DEG_genes <- DEG_genes[which(abs(DEG_genes$log2FoldChange) >= 1), ]
+rownames(DEG_genes) <- DEG_genes$gene_name
+
+# 读取转录因子注释文件
+tf_list <- read.table("TF_network/jaspar_2018_human.txt", header=TRUE, stringsAsFactors=FALSE)
+# 构建基因名称和meme对应关系
+tf_list$meme <- paste(tf_list$Base_ID,tf_list$Version,sep = '.') 
+# 筛选出差异表达的TF
+diff_genes <- rownames(DEG_genes)
+length(diff_genes)
+diff_tfs <-  diff_genes[diff_genes %in% tf_list$Name]
+diff_tfs_number <- length(diff_tfs)
+diff_tfs_number
+
+## 读取TF结合位点的预测结果
+# 被靶向的基因
+tfbs <- read.table("TF_network/TFBS.txt", header=TRUE, stringsAsFactors=FALSE)
+total_genes = length(unique(tfbs$sequence_name))
+diff_gene_number = dim(DEG_genes)[1]
+diff_gene_number
+total_genes
+# enrich function 设置一个超几何分布，看筛选出来的DE_TF对应哪些gene，这些gene是否能在DE_GENE中富集
+enrich <- function(x){
+  # 转录因子调控的所有基因
+  total_targets <- tfbs[tfbs$pattern_name == x, ]
+  total_targets_unique <- unique(total_targets$sequence_name)
+  total_targets_number <-length(total_targets_unique)
+  # 转录因子调控的差异表达基因
+  diff_targets <- total_targets_unique[total_targets_unique %in% diff_genes]
+  diff_targets_number <- length(diff_targets)
+  # 超几何分布检验转录因子靶基因的富集情况
+  p_value <- 1-phyper(diff_targets_number-1,total_targets_number,total_genes-total_targets_number,diff_gene_number)
+  # 将返还结果整理成为一个表格
+  enrichment <- data.frame('total_genes' = total_genes,
+                           'total_taget_genes' = total_targets_number,
+                           'diff_genes' = diff_gene_number,
+                           'diff_targets' = diff_targets_number,
+                           'pvalue' = p_value)
+  return(enrichment)
+}
+
+enrich_results <- lapply(diff_tfs, enrich)
+# 结果汇总，形成一个dataframe
+enrich_result <- ldply(enrich_results, data.frame)
+rownames(enrich_result) <- diff_tfs
+#对p值进行多重校验（变成adj_p）
+enrich_result$q_value = p.adjust(enrich_result$pvalue)
+enriched_tfs <- rownames(enrich_result)
+# 得到第一个结果：enrich.txt
+write.table(enrich_result, file = "BD-N/tf_enrich.txt",sep="\t", row.names =T, quote = F)
+
+#构建相关性分析矩阵
+pbmc_cor <- DEG_genes[,8:15]
+pbmc_cor <- t(pbmc_cor)
+DEG_genes_cors <- cor(pbmc_cor)
+
+# 设立第二个函数，此处仍然是超几何分布（目的是进行第二次筛选：如果TF和富集出来的gene在样本中的相关性过低，则仍然剔除！）
+network <- function(x){
+  # TF调控得所有gene
+  total_targets <- tfbs[tfbs$pattern_name == x, ]
+  total_targets_unique <- unique(total_targets$sequence_name)
+  # TF调控得差异表达基因
+  diff_targets <- total_targets_unique[total_targets_unique %in% diff_genes]
+  diff_targets_number <- length(diff_targets)
+  # 根据相关性筛选
+  tf_cor_target <- diff_targets[cor_value < abs(DEG_genes_cors[diff_targets,x])]
+  # 整理返还信息为一个table
+  edges <- data.frame('tf' = rep(x, length(tf_cor_target)),
+                      'tf_cor_target' =tf_cor_target,
+                      'tf_target_cor' = DEG_genes_cors[tf_cor_target,x])
+  return(edges)
+}
+
+edges_results <- lapply(enriched_tfs, network)
+# 结果汇总
+network_result <- ldply(edges_results, data.frame)
+head(network_result)
+# 得到第二个文件network txt，进行下一步cytoscape的分析
+write.csv(network_result, file = "BD-N/network.csv")
+
