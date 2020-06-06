@@ -322,3 +322,31 @@ head(network_result)
 # 得到第二个文件network txt，进行下一步cytoscape的分析
 write.csv(network_result, file = "BD-N/network.csv")
 
+
+#针对差异基因的富集展示
+#此处需要自己对KEGG官网下的文件处理
+rlogMat3 <- rlogMat[match(rownames(res_padj), rownames(rlogMat)),, drop=F]
+raw_data3 <- raw_data[match(rownames(res_padj), rownames(raw_data)),, drop=F]
+rownames(rlogMat3)<-raw_data3$gene_name
+
+
+enriched_pathway <- read.csv("BD-N/enriched pathway.csv", header = TRUE, sep = ",",quote="\"", dec=".",
+                     fill = TRUE,comment.char="",row.names = 1)
+rlogMat_test <- rlogMat3[match(enriched_pathway$metabolism, rownames(rlogMat3)),, drop=F]
+pheatmap(rlogMat2, cluster_row=T, scale="row", 
+         annotation_col=sample['condition'],
+         fontsize_row = 6)
+
+while (!is.null(dev.list()))  dev.off()
+rlogMat_test <- rlogMat3[match(enriched_pathway$TF, rownames(rlogMat3)),, drop=F]
+rlogMat_test <- na.omit(rlogMat_test)
+pheatmap(rlogMat_test, cluster_row=T, scale="row", 
+         annotation_col=sample['condition'],
+         fontsize_row = 6)
+
+while (!is.null(dev.list()))  dev.off()
+rlogMat_test <- rlogMat3[match(rownames(enrich_result), rownames(rlogMat3)),, drop=F]
+rlogMat_test <- na.omit(rlogMat_test)
+pheatmap(rlogMat_test, cluster_row=T, scale="row", 
+         annotation_col=sample['condition'],
+         fontsize_row = 6)
