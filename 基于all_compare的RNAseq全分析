@@ -232,6 +232,35 @@ p
 while (!is.null(dev.list()))  dev.off()
 write.csv(GO, "BD-N/KEGG.csv")
 
+#GSEA分析
+t_GSEA <- t[order(t$log2FoldChange),]
+t_GSEA$log2FoldChange_2 <- (-1)*t_GSEA$log2FoldChange
+t_GSEA <- t_GSEA[order(-t_GSEA$log2FoldChange_2),]
+ENTREZID_GSEA <- bitr(rownames(t_GSEA), fromType = "ENSEMBL",
+                      toType = c("ENTREZID"),
+                      OrgDb = org.Hs.eg.db)
+t_GSEA$ENSEMBL <- rownames(t_GSEA)
+t_GSEA <- merge(t_GSEA,ENTREZID_GSEA, by="ENSEMBL")
+t_GSEA <- na.omit(t_GSEA)
+t_GSEA <- t_GSEA[order(-t_GSEA$log2FoldChange_2),]
+#随机测试一下是否排序合理
+#View(ENTREZID_GSEA[which(ENTREZID_GSEA$ENSEMBL == "ENSG00000174697"), ])
+genelist <- t_GSEA$log2FoldChange_2
+names(genelist) <- t_GSEA$ENTREZID
+kk_GSEA <- gseKEGG(geneList     = genelist,
+              organism     = 'hsa',
+              nPerm        = 1000,
+              minGSSize    = 10,
+              maxGSSize = 500,
+              pvalueCutoff = 1,
+              verbose      = FALSE)
+View(kk_GSEA@result)
+#描述：Size-富集基因数；ES-富集分数；NES-矫正后的ES；
+#通常认为|NES|>1，NOM p-val<0.05，FDR q-val<0.25的通路下的基因集合是有意义的
+#见https://zhuanlan.zhihu.com/p/44091458
+gseaplot2(kk_GSEA, geneSetID = 1:5, title = kk_GSEA$Description[1])
+write.csv(kk_GSEA@result, file = "BD-N/GSEA.csv")
+
 
 
 #TF分析
