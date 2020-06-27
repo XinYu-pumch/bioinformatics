@@ -280,5 +280,6 @@ write.csv(naiveCD8_DEG,file="T cell-test/naiveCD8_DEG.csv")
 VlnPlot(sce.integrated4, features = c("FCGR3A"), split.by = "orig.ident2", group.by = "celltype", 
                  pt.size = 0, combine = FALSE)
 
-
+#利用Idents，对meta.data里的项目命名分类
+Idents(sce.integrated4) <- "celltype"
 
