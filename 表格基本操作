@@ -1,0 +1,22 @@
+去除重复项目
+unique
+
+构建矩阵
+C <- data.frame(id1=c(1:5),id2=c(11:15))
+
+筛选
+res_padj <- res_padj[which(abs(res_padj$log2FoldChange) >= 1), ]
+
+
+## 升序
+iris[order(iris$Sepal.Width), ]
+## 降序
+iris[order(iris$Sepal.Width, decreasing= T), ]
+
+#选取前几行
+data[1:5, ]
+
+#保存对象为Rdata
+save(sce.integrated3, file = "T cell-test/Treg_PBMC.RData")
+#保存csv文件
+write.csv(pbmc.markers,file="T cell-test/pbmc.markers_Treg.csv")
