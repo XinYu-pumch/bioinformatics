@@ -1,0 +1,284 @@
+p1 <- FeatureScatter(BD_PBMC.bj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+p2 <- FeatureScatter(sce.integrated, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(p1, p2))
+p1
+p2
+FeatureScatter(sce.integrated2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+
+sce.10x <- Read10X(data.dir = 'PBMC_raw/PBMC/BD')
+sce1 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 3, 
+                           min.features = 100, 
+                           project = "BD1") 
+
+sce.10x <- Read10X(data.dir = 'PBMC_raw/PBMC/HC')
+sce2 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 3, 
+                           min.features = 100, 
+                           project = "HC1") 
+
+sce.10x <- Read10X(data.dir = 'PBMC_raw/PBMC/BD-hu')
+sce3 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 3, 
+                           min.features = 100, 
+                           project = "BD2") 
+
+sce.10x <- Read10X(data.dir = 'PBMC_raw/PBMC/HC-he')
+sce4 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 3, 
+                           min.features = 100, 
+                           project = "HC2") 
+
+sce.10x <- Read10X(data.dir = 'PBMC_raw/PBMC/BD-jiao')
+sce5 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 3, 
+                           min.features = 100, 
+                           project = "BD3") 
+
+sce.10x <- Read10X(data.dir = 'PBMC_raw/PBMC/HC-wu')
+sce6 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 3, 
+                           min.features = 100, 
+                           project = "HC3") 
+
+
+sce.10x <- Read10X(data.dir = 'PBMC_raw/PBMC/BD-song')
+sce7 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 3, 
+                           min.features = 100, 
+                           project = "BD4") 
+
+sce.10x <- Read10X(data.dir = 'PBMC_raw/PBMC/HC-yang')
+sce8 <- CreateSeuratObject(counts = sce.10x, 
+                           min.cells = 3, 
+                           min.features = 100, 
+                           project = "HC4")
+
+sce1@meta.data$orig.ident <- "BD1"
+sce2@meta.data$orig.ident <- "HC1"
+sce3@meta.data$orig.ident <- "BD2"
+sce4@meta.data$orig.ident <- "HC2"
+sce5@meta.data$orig.ident <- "BD3"
+sce6@meta.data$orig.ident <- "HC3"
+sce7@meta.data$orig.ident <- "BD4"
+sce8@meta.data$orig.ident <- "HC4"
+
+sce1@meta.data$orig.ident2 <- "BD"
+sce2@meta.data$orig.ident2 <- "HC"
+sce3@meta.data$orig.ident2 <- "BD"
+sce4@meta.data$orig.ident2 <- "HC"
+sce5@meta.data$orig.ident2 <- "BD"
+sce6@meta.data$orig.ident2 <- "HC"
+sce7@meta.data$orig.ident2 <- "BD"
+sce8@meta.data$orig.ident2 <- "HC"
+
+sce.list <- c(sce1, sce2, sce3, sce4, sce5, sce6, sce7, sce8)
+
+for (i in 1:length(sce.list)) {
+  sce.list[[i]][["percent.mt"]] <- PercentageFeatureSet(sce.list[[i]], pattern = "^MT-")
+  sce.list[[i]] <- subset(sce.list[[i]], subset = nFeature_RNA > 200 & nFeature_RNA < 4000 & percent.mt < 5)
+  sce.list[[i]] <- NormalizeData(sce.list[[i]], normalization.method = "LogNormalize", scale.factor = 10000)
+  sce.list[[i]] <- FindVariableFeatures(sce.list[[i]], selection.method = "vst", nfeatures = 2000)
+}
+
+sce.anchors <- FindIntegrationAnchors(object.list = sce.list, dims = 1:30)
+sce.integrated <- IntegrateData(anchorset = sce.anchors, dims = 1:30)
+DefaultAssay(sce.integrated) <- "integrated"
+
+sce.integrated2 <- ScaleData(sce.integrated, verbose = FALSE)
+sce.integrated2 <- RunPCA(sce.integrated2, npcs = 30, verbose = FALSE)
+sce.integrated2 <- RunTSNE(sce.integrated2, reduction = "pca")
+sce.integrated2 <- RunUMAP(sce.integrated2, reduction = "pca", dims =1:30)
+DimPlot(sce.integrated2, reduction = "tsne")
+DimPlot(sce.integrated2, reduction = "umap")
+
+sce.integrated2 <- FindNeighbors(sce.integrated2, dims = 1:30)
+sce.integrated2 <- FindClusters(sce.integrated2, resolution = 0.5)
+DimPlot(object = sce.integrated2, reduction = "tsne",
+        group.by = 'seurat_clusters',
+        label = TRUE)
+
+DimPlot(object = sce.integrated2, reduction = "umap",
+        group.by = 'orig.ident',
+        label = TRUE)
+
+
+distribution <- table(sce.integrated2@meta.data$orig.ident,sce.integrated2@meta.data$seurat_clusters)
+write.csv(distribution,file="T cell-test/PBMC_yuxin.csv")
+
+
+DimPlot(object = sce.integrated3, reduction = "umap",
+        group.by = 'seurat_clusters',
+        label = TRUE)
+save(sce.integrated3, file = "T cell-test/Treg_PBMC.RData")
+#以下用sce.integrated3
+
+
+#find marker
+
+#Treg
+FeaturePlot(sce.integrated3, features = c("FOXP3"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("CTLA4"),reduction = "umap")
+VlnPlot(sce.integrated3, features = c("FOXP3"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("CTLA4"), do.return=T) + geom_boxplot(width=0.1)
+
+#CD4
+FeaturePlot(sce.integrated3, features = c("CD3D"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("S100A4"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("LEF1"),reduction = "umap")
+VlnPlot(sce.integrated3, features = c("IL7R"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("CCR7"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("S100A4"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("CD4"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("LEF1"), do.return=T) + geom_boxplot(width=0.1)
+
+#CD8
+FeaturePlot(sce.integrated3, features = c("CD8A"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("CD3D"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("CD8B"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("CCR7"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("GZMK"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("GZMB"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("PDCD1"),reduction = "umap")
+VlnPlot(sce.integrated3, features = c("CD8A"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("CD8B"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("GZMA"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("GZMB"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("PRF1"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("CCL5"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("CD3D"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("GZMK"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("PDCD1"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("DUSP4"), do.return=T) + geom_boxplot(width=0.1)
+#MAIT&NKT
+FeaturePlot(sce.integrated3, features = c("SLC4A10"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("ZBTB16"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("RORC"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("NK1.1"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("KLRB1"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("KLRC1"),reduction = "umap")
+VlnPlot(sce.integrated3, features = c("SLC4A10"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("ZBTB16"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("RORC"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("NK1.1"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("KLRB1"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("KLRC1"), do.return=T) + geom_boxplot(width=0.1)
+
+
+#Mo
+FeaturePlot(sce.integrated3, features = c("CD14"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("FCGR3A"),reduction = "umap")
+VlnPlot(sce.integrated3, features = c("FCGR3A"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("FCER1A"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("CST3"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("CD14"), do.return=T) + geom_boxplot(width=0.1)
+
+#B
+FeaturePlot(sce.integrated3, features = c("MS4A1"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("CD19"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("CD38"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("CD27"),reduction = "umap")
+VlnPlot(sce.integrated3, features = c("CD19"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("CST3"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("MS4A1"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("CD27"), do.return=T) + geom_boxplot(width=0.1)
+
+#mega
+FeaturePlot(sce.integrated3, features = c("PPBP"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("PF4"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("PLA2G12A"),reduction = "umap")
+
+#NK
+FeaturePlot(sce.integrated3, features = c("NCAM1"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("NKG7"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("GNLY"),reduction = "umap")
+FeaturePlot(sce.integrated3, features = c("IFITM1"),reduction = "umap")
+
+#plasma
+VlnPlot(sce.integrated3, features = c("SDC1"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("CD38"), do.return=T) + geom_boxplot(width=0.1)
+
+#proliferating T
+VlnPlot(sce.integrated3, features = c("TIGIT"), do.return=T) + geom_boxplot(width=0.1)
+VlnPlot(sce.integrated3, features = c("MKI67"), do.return=T) + geom_boxplot(width=0.1)
+
+
+
+#找marker对比
+pbmc.markers <- FindAllMarkers(sce.integrated3, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+write.csv(pbmc.markers,file="T cell-test/pbmc.markers_Treg.csv")
+
+DefaultAssay(sce.integrated3) <- "RNA"
+cluster_19 <- FindMarkers(sce.integrated3, ident.1 = "19", ident.2 = c("0","1"), 
+                       slot = "counts", test.use = "DESeq2")
+
+cluster_19_seurat <- FindMarkers(sce.integrated3, ident.1 = "19", ident.2 = c("0","1"), verbose = FALSE)
+CD8_seurat <- FindMarkers(sce.integrated3, ident.1 = "5", ident.2 = "10", verbose = FALSE)
+
+#重新命名
+sce.integrated4 <- RenameIdents(sce.integrated3,
+                                                 `0` = "CD4+ memory T",
+                                                 `1` = "naive CD4+T",
+                                                 `2` = "CD14+Mo",
+                                                 `3` = "naive B",
+                                                 `4` = "Innate like T?",
+                                                 `5` = "CD8+T effector",
+                                                 `6` = "NK-1",
+                                                 `7` = "naive CD8+T",
+                                                 `8` = "memory B",
+                                                 `9` = "NK-2",
+                                                 `10` = "GZMK+CD8+T",
+                                `11` = "megakaryocyte",
+                                `12` = "Treg",
+                                `13` = "CD16+Mo",
+                                `14` = "cDC",
+                                `15` = "15?",
+                                `16` = "16?",
+                                `17` = "proliferating T",
+                                `18` = "pDC",
+                                `19` = "IFN-induced CD4+T",
+                                `20` = "plasma cell")
+
+DimPlot(object = sce.integrated4, reduction = "umap",
+        label = TRUE)
+
+save(sce.integrated4, file = "T cell-test/Treg_PBMC_annotation.RData")
+
+#找差异基因，画特定cluster的热图的方法
+CD8_seurat <- FindMarkers(sce.integrated4, ident.1 = "GZMB+CD8+T", ident.2 = "GMBK+CD8+T", verbose = FALSE)
+CD8_integrated <- subset(sce.integrated4,idents=c("GZMB+CD8+T","GMBK+CD8+T"),invert = FALSE)
+a <- rownames(CD8_seurat[order(CD8_seurat$avg_logFC), ][1:10,])
+b <- rownames(CD8_seurat[order(CD8_seurat$avg_logFC, decreasing= T), ][1:10,])
+DoHeatmap(CD8_integrated, features = c(a,b)) + NoLegend()
+#
+
+ILT_seurat <- FindMarkers(sce.integrated4, ident.1 = "Innate like T?", verbose = TRUE)
+
+distribution <- table(sce.integrated4@meta.data$seurat_clusters,sce.integrated4@meta.data$orig.ident)
+write.csv(distribution,file="T cell-test/PBMC_yuxin_anno.csv")
+
+Idents(sce.integrated4)
+
+#试着拆分
+sce.integrated4$celltype.stim <- paste(Idents(sce.integrated4), sce.integrated4$orig.ident2, sep = "_")
+sce.integrated4$celltype <- Idents(sce.integrated4)
+Idents(sce.integrated4) <- "celltype.stim"
+DimPlot(sce.integrated4, label = TRUE)
+
+#调用DESeq2
+DefaultAssay(sce.integrated4) <- "RNA"
+naiveCD8_DEG <- FindMarkers(sce.integrated4, ident.1 = "naive CD8+T_BD", ident.2 = "naive CD8+T_HC", 
+                       slot = "counts", test.use = "DESeq2", verbose = TRUE)
+Treg_DEG <- FindMarkers(sce.integrated4, ident.1 = "Treg_BD", ident.2 = "Treg_HC", 
+                            slot = "counts", test.use = "DESeq2", verbose = TRUE)
+
+DefaultAssay(sce.integrated4) <- "RNA"
+naiveCD8_DEG_2 <- FindMarkers(sce.integrated4, ident.1 = "naive CD8+T_BD", ident.2 = "naive CD8+T_HC",verbose = TRUE)
+Treg_DEG_2 <- FindMarkers(sce.integrated4, ident.1 = "Treg_BD", ident.2 = "Treg_HC",verbose = TRUE)
+write.csv(naiveCD8_DEG,file="T cell-test/naiveCD8_DEG.csv")
+
+VlnPlot(sce.integrated4, features = c("FCGR3A"), split.by = "orig.ident2", group.by = "celltype", 
+                 pt.size = 0, combine = FALSE)
+
+
+
