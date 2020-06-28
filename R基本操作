@@ -35,3 +35,7 @@ a <- read.csv("BD NETs/DEseq2-DE_genes.csv", header = TRUE, sep = ",",quote="\""
 #读写txt
 write.table(count_norm_BD, file="T cell-test/count_norm_BD.txt")
 data<-read.table(data_file,header = T,sep ="\t",stringsAsFactors=FALSE,row.names = 1)
+
+#设置函数
+yuxin <- function(x){}
+#最后一行将是yuxin(x)的结果
