@@ -20,3 +20,9 @@ data[1:5, ]
 save(sce.integrated3, file = "T cell-test/Treg_PBMC.RData")
 #保存csv文件
 write.csv(pbmc.markers,file="T cell-test/pbmc.markers_Treg.csv")
+a <- read.csv("BD NETs/DEseq2-DE_genes.csv", header = TRUE, sep = ",",quote="\"", dec=".",
+              fill = TRUE,comment.char="",row.names = 1)
+
+#读写txt
+write.table(count_norm_BD, file="T cell-test/count_norm_BD.txt")
+data<-read.table(data_file,header = T,sep ="\t",stringsAsFactors=FALSE,row.names = 1)
