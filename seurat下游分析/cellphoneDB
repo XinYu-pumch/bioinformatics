@@ -1,0 +1,25 @@
+#首先对文件进行处理
+sce.integrated4_HC <- subset(sce.integrated4, idents="HC",invert = FALSE)
+a <- as(sce.integrated4_HC@assays$RNA@counts, "matrix")
+count_norm_HC <- apply(a, 2, function(x) (x/sum(x))*10000)
+meta_data <- data.frame(cell_type= c(sce.integrated4_HC@meta.data$celltype.stim))
+rownames(meta_data) <- rownames(sce.integrated4_HC@meta.data)
+write.table(count_norm_HC, "count_norm_HC.txt", sep="\t", quote=F)
+write.table(meta_data, file="meta_data_HC.txt", sep="\t", quote=F)
+#注意，meta_data需要手动给第一格添加名称cell
+
+#进入linux
+#总体参考https://www.biorxiv.org/content/10.1101/680926v1.full.pdf
+#https://github.com/Teichlab/cellphonedb
+
+source cpdb-venv/bin/activate
+##对于大数据，最好加入subsampling，10000取3000，总时长大概1-2h
+cellphonedb method statistical_analysis meta_data_BD.txt count_norm_BD.txt --counts-data=gene_name --subsampling  --project-name=statistical_analysis_BD --subsampling-log false
+##进而得到mean.txt + pvalue
+
+#下游处理(绘图)
+cellphonedb plot dot_plot --means-path=./out/statistical_analysis_BD/means.txt --pvalues-path=./out/statistical_analysis_BD/pvalues.txt --output-path=./out/statistical_analysis_BD
+cellphonedb plot heatmap_plot meta_data --pvalues-path=./out/statistical_analysis_BD/pvalues.txt
+
+
+
