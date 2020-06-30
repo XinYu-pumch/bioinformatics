@@ -5,16 +5,16 @@
 options(BioC_mirror="https://mirrors.tuna.tsinghua.edu.cn/bioconductor/")
 BiocManager::install("clusterProfiler")
 
-
-
-去除重复项目
+#去除重复项目
 unique
 
-构建矩阵
+#构建矩阵
 C <- data.frame(id1=c(1:5),id2=c(11:15))
 
-筛选
+#筛选，查找个数
 res_padj <- res_padj[which(abs(res_padj$log2FoldChange) >= 1), ]
+nrow(c[which(c$DEGs == 'down'), ])
+
 
 
 ## 升序
@@ -39,3 +39,6 @@ data<-read.table(data_file,header = T,sep ="\t",stringsAsFactors=FALSE,row.names
 #设置函数
 yuxin <- function(x){}
 #最后一行将是yuxin(x)的结果
+
+#拼接的逻辑
+paste(t,"BD",sep="_")
