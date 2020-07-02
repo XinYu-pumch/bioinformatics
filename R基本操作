@@ -32,7 +32,7 @@ write.csv(pbmc.markers,file="T cell-test/pbmc.markers_Treg.csv")
 a <- read.csv("BD NETs/DEseq2-DE_genes.csv", header = TRUE, sep = ",",quote="\"", dec=".",
               fill = TRUE,comment.char="",row.names = 1)
 
-#读写txt
+#读写txt 
 write.table(count_norm_BD, file="T cell-test/count_norm_BD.txt")
 data<-read.table(data_file,header = T,sep ="\t",stringsAsFactors=FALSE,row.names = 1)
 
