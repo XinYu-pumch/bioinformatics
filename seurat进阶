@@ -104,6 +104,8 @@ DimPlot(object = sce.integrated2, reduction = "umap",
 
 
 distribution <- table(sce.integrated2@meta.data$orig.ident,sce.integrated2@meta.data$seurat_clusters)
+distribution <- prop.table(distribution,1)
+distribution
 write.csv(distribution,file="T cell-test/PBMC_yuxin.csv")
 
 
