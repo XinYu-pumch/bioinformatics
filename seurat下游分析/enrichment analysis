@@ -1,0 +1,77 @@
+##对每个cluster都找差异基因；方法调用MAST比较好
+sce.integrated5 <- test
+Idents(sce.integrated5) <- "celltype.stim"
+response.list=list()
+for (cell in unique(sce.integrated5$celltype)) {
+  #here you can change the method of finding degenes
+  tmp<-FindMarkers(sce.integrated5, 
+                   ident.1 = paste0(cell, "_",'BD'), 
+                   ident.2 = paste0(cell, "_",'HC'), 
+                   verbose = TRUE,
+                   test.use = "MAST",
+                   logfc.threshold = 0)
+  tmp$cell= cell
+  response.list[[cell]]=tmp   #构建一个list，然后把每个表格命名为cell，整合起来；response.list[[NK]]就是NK细胞的差异基因
+}
+responseData=do.call(rbind,response.list)
+
+##构建一个从response.list中分出上调、下调的函数；此函数的逻辑可以学习
+makeDEgenes.list <- function(degene, change = c('UP','Down')){
+  Degenelist=list()
+  
+  for (cells in unique(degene$cell)) {
+    
+    tmp.gene<-  degene %>% rownames_to_column(var = 'gene') %>% 
+      dplyr::mutate(gene = str_remove(gene,pattern = '.*\\.')) 
+    
+    if (change == 'UP') {
+      tmp.gene = tmp.gene %>% dplyr::filter(cell==cells, avg_logFC>0) %>% .$gene
+    }
+    else{
+      tmp.gene = tmp.gene %>% dplyr::filter(cell==cells, avg_logFC<0) %>% .$gene
+    }
+    eg = bitr(tmp.gene, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")#一步完成id转化
+    Degenelist[[cells]] <- eg$ENTREZID
+  }
+  return(Degenelist)
+}
+
+##绘制KEGG图的函数；up.kegg_dot_yuxin(responseData)即可，得到图片
+up.kegg_dot_yuxin <- function(t){
+  Degene.uplist = makeDEgenes.list(degene = t[which(t$p_val_adj<0.05),],change = 'UP')
+  up.kegg <- compareCluster(geneCluster = Degene.uplist,fun = "enrichKEGG",
+                            organism="hsa")
+  p <- dotplot(up.kegg,font.size=10,showCategory=5)
+}
+
+##绘制GSEA的函数；直接GSEA_combined_yx(responseData)即可，得到table
+GSEA_combined_yx <- function(test1){
+  test.list <- list()
+  test1<-  test1 %>% rownames_to_column(var = 'gene') %>% 
+    dplyr::mutate(gene = str_remove(gene,pattern = '.*\\.'))
+  for (cell in unique(test1$cell)) {
+    test2 <- test1[which(test1$cell == cell),]
+    ENTREZID_GSEA <- bitr(test2$gene, fromType = "SYMBOL",
+                          toType = c("ENTREZID"),
+                          OrgDb = org.Hs.eg.db)
+    test2$SYMBOL <- test2$gene
+    test2 <- merge(test2,ENTREZID_GSEA, by="SYMBOL")
+    test2 <- na.omit(test2)
+    test2 <- test2[order(test2$avg_logFC,decreasing= T),]
+    genelist <- test2$avg_logFC
+    names(genelist) <- test2$ENTREZID
+    kk_GSEA <- gseKEGG(geneList     = genelist,
+                       organism     = 'hsa',
+                       nPerm        = 1000,
+                       minGSSize    = 10,
+                       maxGSSize = 500,
+                       pvalueCutoff = 1,
+                       verbose      = TRUE)
+    s <- kk_GSEA@result[which(abs(kk_GSEA@result$NES)>=1 
+                              & kk_GSEA@result$pvalue <= 0.05
+                              & kk_GSEA@result$qvalues <=0.25),]
+    s$cell = cell
+    test.list[[cell]]=s
+  }
+  testData=do.call(rbind,test.list)
+}
