@@ -1,0 +1,30 @@
+#比例的差异分析
+##seurat_clusters是分群；orig.ident2是BD/HC；orig.ident是病人
+Mo <- sce.integrated2
+
+library(tidyverse)
+library(ggpubr)
+colHC="#4E79A7"
+colBD="#E15759"
+
+as.data.frame(Mo@meta.data) %>%
+  #dplyr::mutate(seurat_clusters=factor(seurat_clusters,levels = cell.order)) %>%
+  group_by(orig.ident) %>%
+  summarise(n=n()) ->pat.cell
+
+as.data.frame(Mo@meta.data) %>%
+  #note set condition's order
+  dplyr::mutate(condition=factor(orig.ident2,levels = c("HC","BD"))) %>%
+  group_by(seurat_clusters,condition,orig.ident) %>%
+  summarise(cls_n=n()) %>%
+  inner_join(pat.cell,by=c("orig.ident"="orig.ident")) %>%
+  dplyr::mutate(ratio = cls_n/n) ->data.plot
+
+data.plot %>%
+  ggboxplot(x = "seurat_clusters",y="ratio",add = "jitter",
+            color = "condition",xlab = "",ylab = "Fraction of total cells")+
+  theme(axis.text.x = element_text(angle = 50, hjust = 1))+
+  scale_fill_manual(values=c(colHC,colBD))+
+  scale_color_manual(values=c(colHC,colBD))+
+  stat_compare_means(method = "t.test",aes(group=condition),label = "p.signif")->p
+p
