@@ -45,6 +45,7 @@ up.kegg_dot_yuxin <- function(t){
 }
 
 ##绘制GSEA的函数；直接GSEA_combined_yx(responseData)即可，得到table
+####最后一步，要注意先合并，再筛选；不能合并空的项目！
 GSEA_combined_yx <- function(test1){
   test.list <- list()
   test1<-  test1 %>% rownames_to_column(var = 'gene') %>% 
@@ -67,11 +68,24 @@ GSEA_combined_yx <- function(test1){
                        maxGSSize = 500,
                        pvalueCutoff = 1,
                        verbose      = TRUE)
-    s <- kk_GSEA@result[which(abs(kk_GSEA@result$NES)>=1 
-                              & kk_GSEA@result$pvalue <= 0.05
-                              & kk_GSEA@result$qvalues <=0.25),]
-    s$cell = cell
-    test.list[[cell]]=s
+    kk_GSEA <- kk_GSEA@result
+    kk_GSEA$celltype <- cell
+    test.list[[cell]]=kk_GSEA
   }
   testData=do.call(rbind,test.list)
+  testData <- testData[which(abs(testData$NES)>=1 
+                            & testData$pvalue <= 0.05
+                            & testData$qvalues <=0.25),]
 }
+
+##绘图
+png("GSEA_4v4.png",3000,2000)
+a$a=-log(a$p.adjust)
+p=ggplot(a,aes(celltype,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+p=p+geom_point(aes(size=setSize,color=NES)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+p=p+labs(color=expression(NES),size="setSize",x="celltype",y="GSEA",
+         title="GSEA")  #标签名称
+p=p+theme_bw() #去除灰色背景
+p
+while (!is.null(dev.list()))  dev.off()
