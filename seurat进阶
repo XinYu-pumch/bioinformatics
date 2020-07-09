@@ -83,9 +83,9 @@ for (i in 1:length(sce.list)) {
 
 sce.anchors <- FindIntegrationAnchors(object.list = sce.list, dims = 1:30)
 sce.integrated <- IntegrateData(anchorset = sce.anchors, dims = 1:30)
-DefaultAssay(sce.integrated) <- "integrated"
+DefaultAssay(sce.integrated) <- "integrated" #其实只有整合需要integrated data
 
-sce.integrated2 <- ScaleData(sce.integrated, verbose = FALSE)
+sce.integrated2 <- ScaleData(sce.integrated, verbose = FALSE) #此步骤可以加入vars.to.regress=c("percent.mt","nCount_RNA")进行缩放；针对的是DefaultAssay；也可以加入orig.ident
 sce.integrated2 <- RunPCA(sce.integrated2, npcs = 30, verbose = FALSE)
 sce.integrated2 <- RunTSNE(sce.integrated2, reduction = "pca")
 sce.integrated2 <- RunUMAP(sce.integrated2, reduction = "pca", dims =1:30)
