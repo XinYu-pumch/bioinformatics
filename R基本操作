@@ -10,11 +10,14 @@ unique
 
 #构建矩阵
 C <- data.frame(id1=c(1:5),id2=c(11:15))
+#将稀疏矩阵转化为矩阵（不用导入导出csv了）
+a <- as(sce.integrated4_HC@assays$RNA@counts, "matrix")
 
 #筛选，查找个数
 res_padj <- res_padj[which(abs(res_padj$log2FoldChange) >= 1), ]
 nrow(c[which(c$DEGs == 'down'), ])
-
+#去除所有为0的行
+av.exp_2 <- av.exp_2[which(rowSums(av.exp_2==0)==0),]
 
 
 ## 升序
