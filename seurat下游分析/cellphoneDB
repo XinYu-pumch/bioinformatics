@@ -21,5 +21,7 @@ cellphonedb method statistical_analysis meta_data_BD.txt count_norm_BD.txt --cou
 cellphonedb plot dot_plot --means-path=./out/statistical_analysis_BD/means.txt --pvalues-path=./out/statistical_analysis_BD/pvalues.txt --output-path=./out/statistical_analysis_BD
 cellphonedb plot heatmap_plot meta_data_BD.txt --pvalues-path=./out/statistical_analysis_BD/pvalues.txt
 
+deactivate #关闭虚拟环境
+
 
 
