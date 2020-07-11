@@ -10,6 +10,24 @@ make install
 PATH=$PATH:/ifs1/Grp6/yuxin/R-4.0.2/bin
 PATH=$PATH:/ifs1/Grp6/yuxin/bin
 
+export PATH="$PATH:/ifs1/Grp6/yuxin/yuxin_R/bin"
+
+cd /ifs1/Grp6/yuxin/yuxin_R/bin
+
+vi /etc/profile
+#https://blog.csdn.net/DreamWeaver_zhou/article/details/86538490
+vi/profile
+export R_HOME=/ifs1/Grp6/yuxin/yuxin_R
+export PATH=$PATH:$R_HOME/bin
+source  profile
+
+##https://www.cnblogs.com/youyoui/p/10680329.html
+#临时配置
+export PATH=/ifs1/Grp6/yuxin/yuxin_R/bin:$PATH
+
+install.packages("BiocManager", repos = 'https://mirrors.tuna.tsinghua.edu.cn/CRAN')
+#或者离线安装R CMD INSTALL clue_0.3-54.tar.gz
+
 #安装python3
 pip install wheel
 pip install rpy2
