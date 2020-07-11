@@ -1,3 +1,19 @@
+#安装R
+#对win在计算机-属性-环境变量-高级中，在path添加R的路径（直接添加"C:/R-4.0.1/bin"）
+#先在官网下载tar.gz
+tar -zxvf R-3.5.1.tar.gz 
+cd R-3.5.1
+./configure --prefix=/ifs1/Grp6/yuxin
+make  #由于没有权限，故只能make，而非sudo make
+make install 
+
+PATH=$PATH:/ifs1/Grp6/yuxin/R-4.0.2/bin
+PATH=$PATH:/ifs1/Grp6/yuxin/bin
+
+#安装python3
+pip install wheel
+pip install rpy2
+
 #首先对文件进行处理
 sce.integrated4_HC <- subset(sce.integrated4, idents="HC",invert = FALSE)
 a <- as(sce.integrated4_HC@assays$RNA@counts, "matrix")
