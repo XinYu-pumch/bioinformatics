@@ -1,19 +1,25 @@
 #安装R
 #对win在计算机-属性-环境变量-高级中，在path添加R的路径（直接添加"C:/R-4.0.1/bin"）
 #先在官网下载tar.gz
-tar -zxvf R-3.5.1.tar.gz 
-cd R-3.5.1
-./configure --prefix=/ifs1/Grp6/yuxin
+tar -zxvf R-4.0.2.tar.gz 
+cd R-4.0.2
+./configure --prefix=/ifs1/Grp6/yuxin --enable-R-shlib
 make  #由于没有权限，故只能make，而非sudo make
 make install 
+#临时配置环境变量
+##https://www.cnblogs.com/youyoui/p/10680329.html
+export PATH=/ifs1/Grp6/yuxin/yuxin_R/bin:$PATH
+export PATH=/ifs1/Grp6/yuxin/bin:$PATH
+R -vallina
+install.packages("BiocManager", repos = 'https://mirrors.tuna.tsinghua.edu.cn/CRAN')
+#或者离线安装R CMD INSTALL clue_0.3-54.tar.gz
+
+
 
 PATH=$PATH:/ifs1/Grp6/yuxin/R-4.0.2/bin
 PATH=$PATH:/ifs1/Grp6/yuxin/bin
-
 export PATH="$PATH:/ifs1/Grp6/yuxin/yuxin_R/bin"
-
 cd /ifs1/Grp6/yuxin/yuxin_R/bin
-
 vi /etc/profile
 #https://blog.csdn.net/DreamWeaver_zhou/article/details/86538490
 vi/profile
@@ -21,12 +27,10 @@ export R_HOME=/ifs1/Grp6/yuxin/yuxin_R
 export PATH=$PATH:$R_HOME/bin
 source  profile
 
-##https://www.cnblogs.com/youyoui/p/10680329.html
-#临时配置
-export PATH=/ifs1/Grp6/yuxin/yuxin_R/bin:$PATH
 
-install.packages("BiocManager", repos = 'https://mirrors.tuna.tsinghua.edu.cn/CRAN')
-#或者离线安装R CMD INSTALL clue_0.3-54.tar.gz
+
+
+
 
 #安装python3
 pip install wheel
