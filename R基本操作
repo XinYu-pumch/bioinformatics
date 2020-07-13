@@ -67,3 +67,8 @@ substitute() #变量名称转化为字符串
 
 #分列，df是矩阵，b是要分的列，bc是新名字
 df<-separate(df,b,into = c("b","c"),sep = "_") 
+
+##数值转化的问题
+typeof(data1) #查看类型
+plot.data$pvalue <- as.numeric(as.character(plot.data$pvalue)) #将factor转化成number；注意必须先转化成character，再转化
+
