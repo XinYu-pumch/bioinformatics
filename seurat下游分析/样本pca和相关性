@@ -1,0 +1,23 @@
+Idents(PBMC_mt_ncount) <- "seurat_clusters"
+proportion_yuxin(PBMC_mt_ncount) + ggtitle(substitute(PBMC_mt_ncount))
+Idents(PBMC_mt_ncount) <- "orig.ident"
+av.exp <- AverageExpression(PBMC_mt_ncount)$RNA
+av.exp_2 <-scale(av.exp)
+av.exp_2 <- av.exp_2[which(rowSums(av.exp_2==0)==0),]
+p <- PCAtools::pca(av.exp_2, metadata = data.frame(row.names = colnames(av.exp_2)), 
+                   removeVar = (1-2000/nrow(av.exp_2)))
+biplot(p)+ggtitle(substitute(PBMC_mt_ncount))
+
+#样本相关性
+sampleDists <- dist(t(av.exp_2))
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(colnames(av.exp))
+colnames(sampleDistMatrix) <- paste(colnames(av.exp))
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+
+means <- read.table("out/statistical_analysis_BD/means.txt", head=TRUE)
+pvalues <- read.table("out/statistical_analysis_BD/pvalues.txt", head=TRUE)
