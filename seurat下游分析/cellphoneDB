@@ -57,27 +57,19 @@ source cpdb-venv/bin/activate
 cellphonedb method statistical_analysis meta_data_BD.txt count_norm_BD.txt --counts-data=gene_name --subsampling  --project-name=statistical_analysis_BD --subsampling-log false
 ##进而得到mean.txt + pvalue
 
+
 #下游处理(绘图)
-cellphonedb plot dot_plot --means-path=./out/statistical_analysis_BD/means.txt --pvalues-path=./out/statistical_analysis_BD/pvalues.txt --output-path=./out/statistical_analysis_BD
-cellphonedb plot heatmap_plot meta_data_BD.txt --pvalues-path=./out/statistical_analysis_BD/pvalues.txt
-
-deactivate #关闭虚拟环境
-
-##下游处理在R里面自己进行
-###参考cellphonedb/cellphonedb/src/plotters/R/plot_dot_by_column_name.R
-all_pval = read.table("out/statistical_analysis_BD/pvalues.txt", header=T, stringsAsFactors = F, sep="", comment.char = '', check.names=F, fill=TRUE)
-all_means = read.table("out/statistical_analysis_BD/means.txt", header=T, stringsAsFactors = F, sep="", comment.char = '', check.names=F,fill=TRUE)
+##画点图
+all_pval = read.table("out/statistical_analysis_HC_713/pvalues_1.txt", header=T, stringsAsFactors = F, sep="", comment.char = '', check.names=F, fill=TRUE)
+all_means = read.table("out/statistical_analysis_HC_713/means_1.txt", header=T, stringsAsFactors = F, sep="", comment.char = '', check.names=F,fill=TRUE)
 
 intr_pairs = all_pval$interacting_pair
 all_pval = all_pval[,-c(1:11)]
 all_means = all_means[,-c(1:11)]
-
 selected_rows = intr_pairs
 selected_columns = colnames(all_pval)
-
 sel_pval = all_pval[match(selected_rows, intr_pairs), selected_columns]
 sel_means = all_means[match(selected_rows, intr_pairs), selected_columns]
-
 
 df_names = expand.grid(selected_rows, selected_columns)
 pval = unlist(sel_pval)
@@ -85,15 +77,14 @@ pval[pval==0] = 0.0009
 plot.data = cbind(df_names,pval)
 pr = unlist(as.data.frame(sel_means))
 pr[pr==0] = 1
-plot.data = cbind(plot.data,pr)  ##原版是log2(pr)，不知道为什么不能处理，就改成了pr
+plot.data = cbind(plot.data,pr)
 colnames(plot.data) = c('pair', 'clusters', 'pvalue', 'mean')
-
 my_palette <- colorRampPalette(c("black", "blue", "yellow", "red"), alpha=TRUE)(n=399)
-
-##注意pvalue和mean都是factor，需要改回数值
 plot.data$pvalue <- as.numeric(as.character(plot.data$pvalue))
 plot.data$mean <- as.numeric(as.character(plot.data$mean))
 plot.data_2 <- plot.data[which(abs(plot.data$pvalue) < 0.05),]
+##注意修改名称
+write.csv(plot.data_2,"cellphone_HC.csv")
 
 ggplot(plot.data_2,aes(x=clusters,y=pair)) +
   geom_point(aes(size=-log10(pvalue),color=mean)) +
@@ -106,7 +97,79 @@ ggplot(plot.data_2,aes(x=clusters,y=pair)) +
         axis.text.y = element_text(size=12, colour = "black"),
         axis.title=element_blank(),
         panel.border = element_rect(size = 0.7, linetype = "solid", colour = "black"))
-ggsave('plot.pdf', width = 80, height = 100, device = cairo_pdf, limitsize=F)
+##注意修改名称
+ggsave('HC_plot.pdf', width = 80, height = 100, device = cairo_pdf, limitsize=F)
+
+
+####热图
+#此处修改
+meta <- cbind(rownames(PBMC_anno_HC@meta.data), PBMC_anno_HC@meta.data[,"celltype", drop=F])
+pvalue <- 0.05
+all_intr = read.table("out/statistical_analysis_HC_713/pvalues_1.txt", header=T, stringsAsFactors = F, sep="", comment.char = '', check.names=F, fill=TRUE)
+intr_pairs = all_intr$interacting_pair
+all_intr = all_intr[,-c(1:11)]
+split_sep = '\\|'
+join_sep = '|'
+pairs1_all = unique(meta[,2])
+pairs1 = c()
+for (i in 1:length(pairs1_all))
+  for (j in 1:length(pairs1_all))
+    pairs1 = c(pairs1,paste(pairs1_all[i],pairs1_all[j],sep=join_sep))
+##此处修改
+all_count = matrix(ncol=3)
+colnames(all_count) = c('SOURCE','TARGET','count')
+count1 = c()
+for(i in 1:length(pairs1))
+{
+  p1 = strsplit(pairs1[i], split_sep)[[1]][1]
+  p2 = strsplit(pairs1[i], split_sep)[[1]][2]
+  
+  n1 = intr_pairs[which(all_intr[,pairs1[i]]<=pvalue)]
+  pairs_rev = paste(p2, p1, sep=join_sep)
+  n2 = intr_pairs[which(all_intr[,pairs_rev]<=pvalue)]
+  
+  if(p1!=p2)
+    count1 = length(unique(n1))+length(unique(n2))
+  else
+    count1 = length(unique(n1))
+  
+  new_count = c(p1,p2,count1)
+  names(new_count) = c('SOURCE','TARGET','count')
+  all_count = rbind(all_count, new_count)
+}
+
+all_count = all_count[-1,]
+write.csv(all_count, "all_count_HC.csv")
+
+#######   count interactions
+
+count1 = c()
+for(i in 1:length(pairs1))
+{
+  p1 = strsplit(pairs1[i], split_sep)[[1]][1]
+  p2 = strsplit(pairs1[i], split_sep)[[1]][2]
+  
+  n1 = intr_pairs[which(all_intr[,pairs1[i]]<=pvalue)]
+  
+  pairs_rev = paste(p2, p1, sep=join_sep)
+  n2 = intr_pairs[which(all_intr[,pairs_rev]<=pvalue)]
+  if(p1!=p2)
+    count1 = c(count1,length(unique(n1))+length(unique(n2)))
+  else
+    count1 = c(count1,length(unique(n1)))
+  
+}
+
+#此处修改
+count_matrix = matrix(count1, nrow=length(unique(meta[,2])), ncol=length(unique(meta[,2])))
+rownames(count_matrix)= unique(meta[,2])
+colnames(count_matrix)= unique(meta[,2])
+all_sum = rowSums(count_matrix)
+all_sum = cbind(names(all_sum), all_sum)
+write.csv(all_sum, "all_sum_HC.csv")
+
+col.heatmap <- colorRampPalette(c(col1,col2,col3 ))( 1000 )
+pheatmap(count_matrix)
 
 
 
