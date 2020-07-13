@@ -1,0 +1,74 @@
+##一些marker的寻找方法
+###官网直接用BD和HC的差异
+#Use FindAllMarkers for differentially expressed ligands and receptors between groups
+Idents(PBMC_anno) <- "orig.ident2"
+#markers <- FindAllMarkers(PBMC_anno,assay="RNA",features=genes.to.use,only.pos=TRUE)
+markers <- FindMarkers(PBMC_anno, ident.1 = "BD", ident.2 = "HC", 
+                          verbose = TRUE,
+                          test.use = "MAST",
+                          logfc.threshold = 0) 
+markers <- markers[match(rownames(markers), genes.to.use),, drop=F]
+markers <- markers[which(markers$p_val_adj <= 0.05),]
+ligs.recs.use <- unique(rownames(markers))
+
+responseData_4v4$pair <- rownames(responseData_4v4)
+markers <- separate(responseData_4v4,pair,into = c("b","c"),sep = ".*\\.") 
+markers <- markers[which(markers$p_val_adj <= 0.05),]
+ligs.recs.use <- unique(markers$c)
+
+
+length(ligs.recs.use)
+interactions.forward1 <- ramilowski_pairs[as.character(ramilowski_pairs$ligand) %in% ligs.recs.use,]
+interactions.forward2 <- ramilowski_pairs[as.character(ramilowski_pairs$receptor) %in% ligs.recs.use,]
+interact.for <- rbind(interactions.forward1,interactions.forward2)
+dim(interact.for)
+
+expr.mat <- GetAssayData(PBMC_anno,slot="counts")
+defined.clusters <- PBMC_anno@meta.data$celltype
+defined.groups <- PBMC_anno@meta.data$orig.ident2
+defined.replicates <- PBMC_anno@meta.data$orig.ident
+reshaped.matrices <- reshape_matrices(count.matrix=expr.mat,
+                                      clusters=defined.clusters,
+                                      groups=defined.groups,
+                                      replicates=defined.replicates,
+                                      ligands.and.receptors=interact.for)
+reshaped.matrices
+unnest(reshaped.matrices,cols="samples")
+names(pull(unnest(reshaped.matrices,cols="samples"))[[1]])
+
+consistent.lig.recs <- create_lig_rec_tib(exp.tib=reshaped.matrices,
+                                          clusters=defined.clusters,
+                                          groups=defined.groups,
+                                          replicates=defined.replicates,
+                                          cells.reqd=10,freq.pos.reqd=0.5,
+                                          ligands.and.receptors=interact.for)
+consistent.lig.recs
+unnest(consistent.lig.recs[1,2],cols="lig.rec.exp")
+pull(unnest(consistent.lig.recs[1,2],cols="lig.rec.exp")[1,2])[[1]]
+put.int <- putative_interactions(ligand.receptor.tibble=consistent.lig.recs,
+                                 clusters=defined.clusters,
+                                 groups=defined.groups,
+                                 freq.group.in.cluster=0.05,
+                                 ligands.and.receptors=interact.for)
+
+
+#Identify unique ligand/receptor interactions present in each sample
+unique.ints <- unique_interactions(put.int,group1="BD",group2="HC",interact.for)
+
+#Get data to plot circos for BD
+BD.to.plot <- pull(unique.ints[1,2])[[1]]
+for.circos.BD <- pull(put.int[1,2])[[1]][BD.to.plot]
+circos_plot(interactions=for.circos.BD,clusters=defined.clusters)
+
+testData=do.call(rbind,for.circos.BD)
+write.csv(testData,"for_circos_BD.csv")
+
+
+#Get data to plot circos for tonsil
+HC.to.plot <- pull(unique.ints[2,2])[[1]]
+for.circos.HC <- pull(put.int[2,2])[[1]][HC.to.plot]
+circos_plot(interactions=for.circos.HC,clusters=defined.clusters)
+
+Idents(PBMC_anno) <- "celltype"
+VlnPlot(object = PBMC_anno, features = "PROCR", split.by = "orig.ident2", assay="RNA", pt.size=0.5)
+VlnPlot(object = PBMC_anno, features = "CCL23", split.by = "orig.ident2", assay="RNA", pt.size=0.5)
