@@ -37,14 +37,16 @@ pip install wheel
 pip install rpy2
 
 #首先对文件进行处理
-sce.integrated4_HC <- subset(sce.integrated4, idents="HC",invert = FALSE)
-a <- as(sce.integrated4_HC@assays$RNA@counts, "matrix")
+##注意，celltype中最好不要有空格！！
+Idents(PBMC_anno) <- "orig.ident2"
+PBMC_anno_HC <- subset(PBMC_anno, idents="HC",invert = FALSE)
+a <- as(PBMC_anno_HC@assays$RNA@counts, "matrix")
 count_norm_HC <- apply(a, 2, function(x) (x/sum(x))*10000)
-meta_data <- data.frame(cell_type= c(sce.integrated4_HC@meta.data$celltype.stim))
-rownames(meta_data) <- rownames(sce.integrated4_HC@meta.data)
 write.table(count_norm_HC, "count_norm_HC.txt", sep="\t", quote=F)
-write.table(meta_data, file="meta_data_HC.txt", sep="\t", quote=F)
-#注意，meta_data需要手动给第一格添加名称cell
+meta_data_HC <- cbind(rownames(PBMC_anno_HC@meta.data), PBMC_anno_HC@meta.data[,"celltype", drop=F])   #####  cluster is the user’s specific cluster column
+write.table(meta_data_HC, "meta_data_HC.txt", sep="\t", quote=F, row.names=F)
+
+
 
 #进入linux
 #总体参考https://www.biorxiv.org/content/10.1101/680926v1.full.pdf
@@ -60,6 +62,52 @@ cellphonedb plot dot_plot --means-path=./out/statistical_analysis_BD/means.txt -
 cellphonedb plot heatmap_plot meta_data_BD.txt --pvalues-path=./out/statistical_analysis_BD/pvalues.txt
 
 deactivate #关闭虚拟环境
+
+##下游处理在R里面自己进行
+###参考cellphonedb/cellphonedb/src/plotters/R/plot_dot_by_column_name.R
+all_pval = read.table("out/statistical_analysis_BD/pvalues.txt", header=T, stringsAsFactors = F, sep="", comment.char = '', check.names=F, fill=TRUE)
+all_means = read.table("out/statistical_analysis_BD/means.txt", header=T, stringsAsFactors = F, sep="", comment.char = '', check.names=F,fill=TRUE)
+
+intr_pairs = all_pval$interacting_pair
+all_pval = all_pval[,-c(1:11)]
+all_means = all_means[,-c(1:11)]
+
+selected_rows = intr_pairs
+selected_columns = colnames(all_pval)
+
+sel_pval = all_pval[match(selected_rows, intr_pairs), selected_columns]
+sel_means = all_means[match(selected_rows, intr_pairs), selected_columns]
+
+
+df_names = expand.grid(selected_rows, selected_columns)
+pval = unlist(sel_pval)
+pval[pval==0] = 0.0009
+plot.data = cbind(df_names,pval)
+pr = unlist(as.data.frame(sel_means))
+pr[pr==0] = 1
+plot.data = cbind(plot.data,pr)  ##原版是log2(pr)，不知道为什么不能处理，就改成了pr
+colnames(plot.data) = c('pair', 'clusters', 'pvalue', 'mean')
+
+my_palette <- colorRampPalette(c("black", "blue", "yellow", "red"), alpha=TRUE)(n=399)
+
+##注意pvalue和mean都是factor，需要改回数值
+plot.data$pvalue <- as.numeric(as.character(plot.data$pvalue))
+plot.data$mean <- as.numeric(as.character(plot.data$mean))
+plot.data_2 <- plot.data[which(abs(plot.data$pvalue) < 0.05),]
+
+ggplot(plot.data_2,aes(x=clusters,y=pair)) +
+  geom_point(aes(size=-log10(pvalue),color=mean)) +
+  scale_color_gradientn('Log2 mean (Molecule 1, Molecule 2)', colors=my_palette) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text=element_text(size=14, colour = "black"),
+        axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size=12, colour = "black"),
+        axis.title=element_blank(),
+        panel.border = element_rect(size = 0.7, linetype = "solid", colour = "black"))
+ggsave('plot.pdf', width = 80, height = 100, device = cairo_pdf, limitsize=F)
+
 
 
 
