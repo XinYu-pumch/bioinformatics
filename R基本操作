@@ -27,6 +27,9 @@ iris[order(iris$Sepal.Width, decreasing= T), ]
 ##求并集、交集
 setdiff(x=1:4, y=2:3)
 intersect(x=c("abc", "bcd"), y = c("abc", 12, "apple"))
+##match的逻辑：match的后置
+BD_unique <- na.omit(BD_rp[match(support$support,BD_rp$support),,drop=F])
+
 
 #选取前几行
 data[1:5, ]
