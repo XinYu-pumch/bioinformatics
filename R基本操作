@@ -24,6 +24,9 @@ av.exp_2 <- av.exp_2[which(rowSums(av.exp_2==0)==0),]
 iris[order(iris$Sepal.Width), ]
 ## 降序
 iris[order(iris$Sepal.Width, decreasing= T), ]
+##求并集、交集
+setdiff(x=1:4, y=2:3)
+intersect(x=c("abc", "bcd"), y = c("abc", 12, "apple"))
 
 #选取前几行
 data[1:5, ]
