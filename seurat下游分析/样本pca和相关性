@@ -1,7 +1,8 @@
 Idents(PBMC_mt_ncount) <- "seurat_clusters"
 proportion_yuxin(PBMC_mt_ncount) + ggtitle(substitute(PBMC_mt_ncount))
-Idents(PBMC_mt_ncount) <- "orig.ident"
-av.exp <- AverageExpression(PBMC_mt_ncount)$RNA
+
+Idents(PBMC_mt_ncount) <- "orig.ident"  #或许应该是integrated
+av.exp <- AverageExpression(PBMC_mt_ncount)$RNA #或许应该是$integrated
 av.exp_2 <-scale(av.exp)
 av.exp_2 <- av.exp_2[which(rowSums(av.exp_2==0)==0),]
 p <- PCAtools::pca(av.exp_2, metadata = data.frame(row.names = colnames(av.exp_2)), 
