@@ -173,4 +173,42 @@ pheatmap(count_matrix)
 
 
 
+####求共同的通路
+BD_rp <- read.csv("cellphone_BD.csv", header = TRUE, sep = ",",quote="\"", dec=".",
+              fill = TRUE,comment.char="",row.names = 1)
+
+HC_rp <- read.csv("cellphone_HC.csv", header = TRUE, sep = ",",quote="\"", dec=".",
+                  fill = TRUE,comment.char="",row.names = 1)
+
+BD_rp$support <- paste(BD_rp$pair,BD_rp$clusters,sep="")
+HC_rp$support <- paste(HC_rp$pair,HC_rp$clusters,sep="")
+
+
+common <- na.omit(BD_rp[match(HC_rp$support,BD_rp$support),, drop=F])
+
+support_BD <- data.frame(support = setdiff(BD_rp$support,HC_rp$support))
+support_HC <- data.frame(support = setdiff(HC_rp$support,BD_rp$support))
+
+#match的后置
+BD_unique <- na.omit(BD_rp[match(support_BD$support,BD_rp$support),,drop=F])
+HC_unique <- na.omit(HC_rp[match(support_HC$support,HC_rp$support),,drop=F])
+
+BD_unique = BD_unique[,-5]
+HC_unique = HC_unique[,-5]
+
+
+ggplot(HC_unique,aes(x=clusters,y=pair)) +
+  geom_point(aes(size=-log10(pvalue),color=mean)) +
+  scale_color_gradientn('Log2 mean (Molecule 1, Molecule 2)', colors=my_palette) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        axis.text=element_text(size=14, colour = "black"),
+        axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size=12, colour = "black"),
+        axis.title=element_blank(),
+        panel.border = element_rect(size = 0.7, linetype = "solid", colour = "black"))
+ggsave('HC_unique.pdf', width = 80, height = 100, device = cairo_pdf, limitsize=F)
+
+
 
