@@ -5,6 +5,12 @@ source ~/.bashrc　　##似乎不点也可？　　
 
 export PATH=/ifs1/Grp6/yuxin/miniconda3/bin:$PATH #临时配置环境变量
 
+conda create -y --name bioinfo python=3 #需要创建一个环境，叫biofinfo
+source activate bioinfo #激活该环境
+conda deactivate #退出
+conda remove -n name --all #删除该环境
+
+
 conda config --add channels conda-forge　　　
 conda config --add channels defaults　　　
 conda config --add channels r　　　
@@ -17,10 +23,21 @@ conda config --add channels https://mirrors.ustc.edu.cn/anaconda/pkgs/free/
 conda config --add channels https://mirrors.ustc.edu.cn/anaconda/cloud/bioconda/
 conda config --set show_channel_urls yes
 
+conda install -c conda-forge r-randomcolor  #先安装这个
+conda install libv8-dev
+
+##第一次进入R
+source activate bioinfo
+R --vanilla
+install.packages("BiocManager") ##选择镜像的时候，输入quit()
+
+
+options(BioC_mirror="https://mirrors.tuna.tsinghua.edu.cn/bioconductor") #设置biocmanager的源
+
 conda search r-base #先看一下可供的R版本
 conda install r r=4.0 
 conda install r-base
-conda install -c r r-seurat #R包的安装方式
+conda install -c r r-BiocManager #R包的安装方式
 
-conda install libv8-dev
+
 
