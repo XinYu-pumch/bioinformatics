@@ -22,3 +22,5 @@ conda install r r=4.0
 conda install r-base
 conda install -c r r-seurat #R包的安装方式
 
+conda install libv8-dev
+
