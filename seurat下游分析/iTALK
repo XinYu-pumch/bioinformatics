@@ -41,3 +41,20 @@ for(comm_type in comm_list){
 
 iTalk_res <- iTalk_res[order(iTalk_res$cell_from_mean_exprs*iTalk_res$cell_to_mean_exprs,decreasing=T),][1:20,]  
 p <- NetView(iTalk_res,col=cell_col,vertex.label.cex=1,arrow.width=1,edge.max.width=5)
+LRPlot(iTalk_res[1:20,],datatype='mean count',cell_col=cell_col,link.arr.lwd=iTalk_res$cell_from_mean_exprs[1:20],link.arr.width=iTalk_res$cell_to_mean_exprs[1:20])
+
+##分析差异基因，这里可以引用MAST/DESeq2等
+
+deg_NCM<-DEG(iTalk_data %>% filter(cell_type=='CD16_Mo'),method='MAST',contrast=c('BD', 'HC'))
+deg_CM<-DEG(iTalk_data %>% filter(cell_type=='CD14_Mo'),method='MAST',contrast=c('BD', 'HC'))
+deg <- rbind(deg_NCM,deg_CM)
+
+res<-NULL
+for(comm_type in comm_list){
+  res_cat<-FindLR(deg,datatype='DEG',comm_type=comm_type)
+  #res_cat<-FindLR(deg_t,  datatype='DEG',comm_type=comm_type)
+  res<-rbind(res,res_cat)
+}
+
+write.csv(res,file="res.csv")
+
