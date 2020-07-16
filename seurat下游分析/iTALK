@@ -20,41 +20,114 @@ library(iTALK)
 library(Seurat)
 library(Matrix)
 library(dplyr)
-load("T cell-test/PBMC_anno/PBMC_anno.RData")
+
+Idents(PBMC_anno) <- "celltype"
+VlnPlot(object = PBMC_anno, features = c("CD40LG"), ncol = 3,split.by = "orig.ident2")
+while (!is.null(dev.list()))  dev.off()
+test <- responseData_4v4[which(responseData_4v3$gene == "FCGR3A" ),]
+test
+test <- deg_NCM_DESeq2[which(deg_NCM_DESeq2$gene == "FCGR3A" ),]
+test
+
 
 iTalk_data <- as.data.frame(t(PBMC_anno@assays$RNA@counts))
+# iTALK 要求包含cell_type列，我的细胞分群存储在seurat_cluster
 iTalk_data$cell_type <- PBMC_anno@meta.data$celltype
+# iTALK 要求包含compare_group列（多样本），表示每个细胞的生物学分组/样本，我的细胞分组存放在Group
 iTalk_data$compare_group <- PBMC_anno@meta.data$orig.ident2
+
 my10colors <- my36colors <-c('#E5D2DD', '#53A85F', '#F1BB72', '#F3B1A0', '#D6E7A3', '#57C3F3', '#476D87', '#E95C59', '#E59CC4', '#AB3282')
 
 highly_exprs_genes <- rawParse(iTalk_data, top_genes=50, stats="mean")
-# 通讯类型
 comm_list<-c('growth factor','other','cytokine','checkpoint')
 cell_types <- unique(iTalk_data$cell_type)
 cell_col <- structure(my10colors[1:length(cell_types)], names=cell_types)
 
+deg_NCM_MAST <-DEG(iTalk_data %>% filter(cell_type=='CD16_Mo'),method='MAST',contrast=c('BD', 'HC'))
+deg_NCM_DESeq2
+deg_NCM_edgeR <-DEG(iTalk_data %>% filter(cell_type=='CD16_Mo'),method='edgeR',contrast=c('BD', 'HC'))
+
+Idents(PBMC_anno) <- "celltype.stim"
+PBMC_anno
+deg_NCM_DESeq2_Seurat <- FindMarkers(PBMC_anno, 
+            ident.1 = paste0("CD16_Mo_BD"), 
+            ident.2 = paste0("CD16_Mo_HC"), 
+            verbose = TRUE,
+            test.use = "DESeq2",
+            logfc.threshold = 0)
+
+yuxin_val(deg_NCM_DESeq2)
+yuxin_val(deg_NCM_MAST)
+yuxin_val(deg_NCM_edgeR)
+yuxin_val_2(deg_NCM_DESeq2_Seurat)
+yuxin_val_2(responseData_4v4[which(responseData_4v4$cell=="CD16_Mo"),])
+
+KEGG_yuxin(deg_NCM_DESeq2)
+
+
+deg_list=list()
+for (cell in unique(iTalk_data$cell_type)) {
+  t <- DEG(iTalk_data %>% filter(cell_type==cell),method='DESeq2',contrast=c('BD', 'HC'))
+  deg_list[[cell]]=t #每一个t作为list中的一个元素，命名为cell
+}
+deglist=do.call(rbind,deg_list)
+
+a <- deglist[which(deglist$cell_type == "Treg" ),]
+yuxin_val(a)
+write.csv(deglist,file="deglist_iTALK_DESeq2_all.csv")
+nrow(deglist[which(deglist$logFC>=0 & deglist$q.value<=0.05),])
+nrow(deglist[which(deglist$logFC<=0 & deglist$q.value<=0.05),])
+
+res<-NULL
+for(comm_type in comm_list){
+  res_cat<-FindLR(deglist, datatype='DEG',comm_type=comm_type)
+  #res_cat<-FindLR(deg_t,  datatype='DEG',comm_type=comm_type)
+  res<-rbind(res,res_cat)
+}
+res <- na.omit(res)
+res<-res[order(abs(res$cell_from_logFC*res$cell_to_logFC),decreasing=T),]
+
+##KEGG
+#最后一个数字是logFC的阈值
+a <- makeDEgenes.list_yuxin_2(deglist,change = c('UP'),0.2)
+up.kegg <- compareCluster(geneCluster =a , fun = "enrichKEGG",
+                          organism="hsa")
+dotplot(up.kegg,font.size=10,showCategory=5)
+
+
+deglist_up <- makeDEgenes.list_yuxin(deglist,change = c('UP'),0.25)
+p <-KEGG_all_yuxin(deglist_up)
+p
+ggsave(filename="KEGG.pdf",width=15,height=12,limitsize = FALSE)
+
+##火山图
+p <- yuxin_val(deglist[which(deglist$cell_type=="CD16_Mo"),])
+p
+
+#整体的细胞互作
 iTalk_res <- NULL
 for(comm_type in comm_list){
   res_cat <- FindLR(highly_exprs_genes, datatype='mean count', comm_type=comm_type)
   iTalk_res <- rbind(iTalk_res, res_cat)
 }
-
-iTalk_res <- iTalk_res[order(iTalk_res$cell_from_mean_exprs*iTalk_res$cell_to_mean_exprs,decreasing=T),][1:20,]  
-p <- NetView(iTalk_res,col=cell_col,vertex.label.cex=1,arrow.width=1,edge.max.width=5)
-LRPlot(iTalk_res[1:20,],datatype='mean count',cell_col=cell_col,link.arr.lwd=iTalk_res$cell_from_mean_exprs[1:20],link.arr.width=iTalk_res$cell_to_mean_exprs[1:20])
-
-##分析差异基因，这里可以引用MAST/DESeq2等
-
-deg_NCM<-DEG(iTalk_data %>% filter(cell_type=='CD16_Mo'),method='MAST',contrast=c('BD', 'HC'))
-deg_CM<-DEG(iTalk_data %>% filter(cell_type=='CD14_Mo'),method='MAST',contrast=c('BD', 'HC'))
-deg <- rbind(deg_NCM,deg_CM)
+iTalk_res <- iTalk_res[order(iTalk_res$cell_from_mean_exprs*iTalk_res$cell_to_mean_exprs,decreasing=T),]        
+NetView(iTalk_res[1:20,],col=cell_col,vertex.label.cex=1,arrow.width=1,edge.max.width=5)
+ggsave(filename="NetView.pdf",width=15,height=12,limitsize = FALSE)
+LRPlot(iTalk_res[1:20,],datatype='mean count',
+       cell_col=cell_col,
+       link.arr.lwd=iTalk_res$cell_from_mean_exprs[1:20],
+       link.arr.width=iTalk_res$cell_to_mean_exprs[1:20])
+##差异的细胞互作
+deg_NCM_MAST <- na.omit(deg_NCM_MAST)
 
 res<-NULL
 for(comm_type in comm_list){
-  res_cat<-FindLR(deg,datatype='DEG',comm_type=comm_type)
+  res_cat<-FindLR(deglist, datatype='DEG',comm_type=comm_type)
   #res_cat<-FindLR(deg_t,  datatype='DEG',comm_type=comm_type)
   res<-rbind(res,res_cat)
 }
-
-write.csv(res,file="res.csv")
+all_interaction <-na.omit(res[order(res$cell_from_logFC*res$cell_to_logFC,decreasing=T),])
+write.csv(all_interaction,file= "all_interaction.csv")
+unique(all_interaction$comm_type)
+a <- all_interaction[which(all_interaction$comm_type =="checkpoint"),]
 
