@@ -1,0 +1,669 @@
+install.packages("igraph")
+install.packages("circlize")
+library("DESeq2","edgeR","MAST","igraph")
+
+
+#读取一个叫database的RData
+database_iTALK <- database
+
+NetView <- function (data, col, label = TRUE, edge.curved = 0.5, shape = "circle", 
+          layout = nicely(), vertex.size = 20, margin = 0.2, vertex.label.cex = 1.5, 
+          vertex.label.color = "black", arrow.width = 1.5, edge.label.color = "black", 
+          edge.label.cex = 1, edge.max.width = 10) 
+{
+  net <- data %>% group_by(cell_from, cell_to) %>% dplyr::summarize(n = n())
+  net <- as.data.frame(net, stringsAsFactors = FALSE)
+  g <- graph.data.frame(net, directed = TRUE)
+  edge.start <- ends(g, es = E(g), names = FALSE)
+  coords <- layout_(g, layout)
+  if (nrow(coords) != 1) {
+    coords_scale = scale(coords)
+  }
+  else {
+    coords_scale <- coords
+  }
+  loop.angle <- ifelse(coords_scale[V(g), 1] > 0, -atan(coords_scale[V(g), 
+                                                                     2]/coords_scale[V(g), 1]), pi - atan(coords_scale[V(g), 
+                                                                                                                       2]/coords_scale[V(g), 1]))
+  V(g)$size <- vertex.size
+  V(g)$color <- col[V(g)]
+  V(g)$label.color <- vertex.label.color
+  V(g)$label.cex <- vertex.label.cex
+  if (label) {
+    E(g)$label <- E(g)$n
+  }
+  if (max(E(g)$n) == min(E(g)$n)) {
+    E(g)$width <- 2
+  }
+  else {
+    E(g)$width <- 1 + edge.max.width/(max(E(g)$n) - min(E(g)$n)) * 
+      (E(g)$n - min(E(g)$n))
+  }
+  E(g)$arrow.width <- arrow.width
+  E(g)$label.color <- edge.label.color
+  E(g)$label.cex <- edge.label.cex
+  E(g)$color <- V(g)$color[edge.start[, 1]]
+  if (sum(edge.start[, 2] == edge.start[, 1]) != 0) {
+    E(g)$loop.angle[which(edge.start[, 2] == edge.start[, 
+                                                        1])] <- loop.angle[edge.start[which(edge.start[, 
+                                                                                                       2] == edge.start[, 1]), 1]]
+  }
+  plot(g, edge.curved = edge.curved, vertex.shape = shape, 
+       layout = coords_scale, margin = margin)
+  return(g)
+}
+
+LRPlot<-function (data, datatype, gene_col = NULL, transparency = 0.5, 
+          link.arr.lwd = 1, link.arr.lty = NULL, link.arr.col = NULL, 
+          link.arr.width = NULL, link.arr.type = NULL, facing = "clockwise", 
+          cell_col = NULL, print.cell = TRUE, track.height_1 = uh(2, 
+                                                                  "mm"), track.height_2 = uh(12, "mm"), annotation.height_1 = 0.01, 
+          annotation.height_2 = 0.01, text.vjust = "0.4cm", ...) 
+{
+  cell_group <- unique(c(data$cell_from, data$cell_to))
+  genes <- c(structure(data$ligand, names = data$cell_from), 
+             structure(data$receptor, names = data$cell_to))
+  genes <- genes[!duplicated(paste(names(genes), genes))]
+  genes <- genes[order(names(genes))]
+  if (is.null(link.arr.lty)) {
+    if (datatype == "mean count") {
+      link.arr.lty = "solid"
+    }
+    else if (datatype == "DEG") {
+      link.arr.lty = structure(ifelse(data$cell_from_logFC == 
+                                        1e-04, "dashed", "solid"), names = paste(data$cell_from, 
+                                                                                 data$receptor))
+    }
+    else {
+      print("invalid datatype")
+    }
+  }
+  if (is.null(link.arr.col)) {
+    if (datatype == "mean count") {
+      data <- data %>% mutate(link_col = "black")
+    }
+    else if (datatype == "DEG") {
+      data <- data %>% mutate(link_col = ifelse(cell_from_logFC == 
+                                                  1e-04, ifelse(cell_to_logFC > 0, "#d73027", 
+                                                                "#00ccff"), ifelse(cell_to_logFC == 1e-04, 
+                                                                                   ifelse(cell_from_logFC > 0, "#d73027", 
+                                                                                          "#00ccff"), ifelse(cell_from_logFC > 
+                                                                                                               0, ifelse(cell_to_logFC > 0, "#d73027", 
+                                                                                                                         "#dfc27d"), ifelse(cell_to_logFC > 0, 
+                                                                                                                                            "#9933ff", "#00ccff")))))
+    }
+    else {
+      print("invalid datatype")
+    }
+  }
+  else {
+    data$link_col = link.arr.col
+  }
+  if (is.null(link.arr.type)) {
+    if (datatype == "mean count") {
+      link.arr.type = "triangle"
+    }
+    else if (datatype == "DEG") {
+      link.arr.type = structure(ifelse(data$cell_to_logFC == 
+                                         1e-04, "ellipse", "triangle"), names = paste(data$cell_from, 
+                                                                                      data$receptor))
+    }
+    else {
+      print("invalid datatype")
+    }
+  }
+  if (is.null(gene_col)) {
+    comm_col <- structure(c("#99ff99", "#99ccff", 
+                            "#ff9999", "#ffcc99"), names = c("other", 
+                                                             "cytokine", "checkpoint", "growth factor"))
+    gene_col <- structure(c(comm_col[data$comm_type], rep("#073c53", 
+                                                          length(data$receptor))), names = c(data$ligand, data$receptor))
+  }
+  if (is.null(cell_col)) {
+    cell_col <- structure(randomColor(count = length(unique(names(genes))), 
+                                      luminosity = "dark"), names = unique(names(genes)))
+  }
+  if (is.null(link.arr.lwd)) {
+    data <- data %>% mutate(arr_width = 1)
+  }
+  else if (max(abs(link.arr.lwd)) - min(abs(link.arr.lwd)) == 
+           0 && all(link.arr.lwd != 1e-04)) {
+    data <- data %>% mutate(arr_width = ifelse(abs(link.arr.lwd < 
+                                                     5), abs(link.arr.lwd), 5))
+  }
+  else {
+    data <- data %>% mutate(arr_width = ifelse(link.arr.lwd == 
+                                                 1e-04, 2, 1 + 5/(max(abs(link.arr.lwd)) - min(abs(link.arr.lwd))) * 
+                                                 (abs(link.arr.lwd) - min(abs(link.arr.lwd)))))
+  }
+  if (length(cell_group) != 1) {
+    gap.degree <- do.call("c", lapply(table(names(genes)), 
+                                      function(i) c(rep(1, i - 1), 8)))
+  }
+  else {
+    gap.degree <- do.call("c", lapply(table(names(genes)), 
+                                      function(i) c(rep(1, i))))
+  }
+  circos.par(gap.degree = gap.degree)
+  if (length(gene_col) == 1) {
+    grid.col = gene_col
+  }
+  else {
+    grid.col = gene_col[genes]
+    names(grid.col) <- paste(names(genes), genes)
+  }
+  if (is.null(link.arr.width)) {
+    data <- data %>% mutate(link.arr.width = data$arr_width/10)
+  }
+  else if (max(abs(link.arr.width)) - min(abs(link.arr.width)) == 
+           0 && all(link.arr.width != 1e-04)) {
+    data <- data %>% mutate(link.arr.width = ifelse(abs(link.arr.width) < 
+                                                      0.5, abs(link.arr.width), 0.5))
+  }
+  else {
+    data <- data %>% mutate(link.arr.width = ifelse(link.arr.width == 
+                                                      1e-04, 0.2, (1 + 5/(max(abs(link.arr.width)) - min(abs(link.arr.width))) * 
+                                                                     (abs(link.arr.width) - min(abs(link.arr.width))))/10))
+  }
+  chordDiagram(as.data.frame(cbind(paste(data$cell_from, data$ligand), 
+                                   paste(data$cell_to, data$receptor))), order = paste(names(genes), 
+                                                                                       genes), grid.col = grid.col, transparency = transparency, 
+               directional = 1, direction.type = "arrows", link.arr.lwd = data$arr_width, 
+               link.arr.lty = link.arr.lty, link.arr.type = link.arr.type, 
+               link.arr.width = data$link.arr.width, link.arr.col = data$link_col, 
+               col = "#00000000", annotationTrack = c("grid"), 
+               preAllocateTracks = list(list(track.height = track.height_1), 
+                                        list(track.height = track.height_2)), annotationTrackHeight = c(annotation.height_1, 
+                                                                                                        annotation.height_2), ...)
+  circos.trackPlotRegion(track.index = 2, panel.fun = function(x, 
+                                                               y) {
+    xlim = get.cell.meta.data("xlim")
+    ylim = get.cell.meta.data("ylim")
+    sector.index = genes[get.cell.meta.data("sector.numeric.index")]
+    circos.text(mean(xlim), mean(ylim), sector.index, col = "black", 
+                cex = 0.7, facing = facing, niceFacing = TRUE)
+  }, bg.border = 0)
+  if (print.cell) {
+    for (c in unique(names(genes))) {
+      gene = as.character(genes[names(genes) == c])
+      highlight.sector(sector.index = paste(c, gene), track.index = 1, 
+                       col = ifelse(length(cell_col) == 1, cell_col, 
+                                    cell_col[c]), text = c, text.vjust = text.vjust, 
+                       niceFacing = TRUE, lwd = 1)
+    }
+  }
+  circos.clear()
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DEG<-function (data, method, min_gene_expressed = 0, min_valid_cells = 0, 
+          contrast = NULL, q_cut = 0.05, add = TRUE, top = 50, stats = "mean", 
+          ...) 
+{
+  if (method %in% c("SCDE", "monocle", "DESingle", 
+                    "MAST") && dim(data)[1] >= 400) {
+    print("Warning: It may take a long time. You can go and brew a cup of coffee...")
+  }
+  if (length(unique(data$cell_type)) != 1) {
+    stop("Error: please compare data with sinlge cell type")
+  }
+  sub_data <- subset(data, select = -cell_type)
+  combination <- combn(unique(sub_data$compare_group), 2)
+  res = NULL
+  if (method == "Wilcox") {
+    for (i in ncol(combination)) {
+      if (is.null(contrast)) {
+        contrast = c(combination[, i])
+      }
+      sub_data <- sub_data[sub_data$compare_group %in% 
+                             combination[, i], ]
+      res <- rbind(res, WilcoxTest(sub_data, min_gene_expressed, 
+                                   min_valid_cells, contrast = contrast, ...))
+    }
+  }
+  else if (method == "DESeq2") {
+    for (i in ncol(combination)) {
+      if (is.null(contrast)) {
+        contrast = c(combination[, i])
+      }
+      sub_data <- sub_data[sub_data$compare_group %in% 
+                             combination[, i], ]
+      res <- rbind(res, DESeq2Test(sub_data, min_gene_expressed, 
+                                   min_valid_cells, contrast = contrast, ...))
+    }
+  }
+  else if (method == "SCDE") {
+    for (i in ncol(combination)) {
+      if (is.null(contrast)) {
+        contrast = c(combination[, i])
+      }
+      sub_data <- sub_data[sub_data$compare_group %in% 
+                             combination[, i], ]
+      res <- rbind(res, SCDETest(sub_data, min_gene_expressed, 
+                                 min_valid_cells, contrast = contrast, ...))
+    }
+  }
+  else if (method == "monocle") {
+    for (i in ncol(combination)) {
+      if (is.null(contrast)) {
+        contrast = c(combination[, i])
+      }
+      sub_data <- sub_data[sub_data$compare_group %in% 
+                             combination[, i], ]
+      res <- rbind(res, MonocleTest(sub_data, min_gene_expressed, 
+                                    min_valid_cells, contrast = contrast, ...))
+    }
+  }
+  else if (method == "edgeR") {
+    for (i in ncol(combination)) {
+      if (is.null(contrast)) {
+        contrast = c(combination[, i])
+      }
+      sub_data <- sub_data[sub_data$compare_group %in% 
+                             combination[, i], ]
+      res <- rbind(res, edgeRTest(sub_data, min_gene_expressed, 
+                                  min_valid_cells, contrast = contrast, ...))
+    }
+  }
+  else if (method == "DESingle") {
+    for (i in ncol(combination)) {
+      if (is.null(contrast)) {
+        contrast = c(combination[, i])
+      }
+      sub_data <- sub_data[sub_data$compare_group %in% 
+                             combination[, i], ]
+      res <- rbind(res, DESingleTest(sub_data, min_gene_expressed, 
+                                     min_valid_cells, contrast = contrast, ...))
+    }
+  }
+  else if (method == "MAST") {
+    for (i in ncol(combination)) {
+      if (is.null(contrast)) {
+        contrast = c(combination[, i])
+      }
+      sub_data <- sub_data[sub_data$compare_group %in% 
+                             combination[, i], ]
+      res <- rbind(res, MASTTest(sub_data, min_gene_expressed, 
+                                 min_valid_cells, contrast = contrast, ...))
+    }
+  }
+  else {
+    stop("Error: method currently not available")
+  }
+  cell_type <- unique(data$cell_type)
+  res <- data.frame(res, cell_type, stringsAsFactors = FALSE)
+  res <- res %>% dplyr::filter(q.value < q_cut)
+  if (add) {
+    parsedData <- rawParse(data %>% select(-compare_group), 
+                           top = top, stats = stats) %>% select(c(gene, cell_type)) %>% 
+      dplyr::mutate(logFC = 1e-04, p.value = NA, q.value = NA)
+    parsedData <- parsedData %>% anti_join(res, by = c(gene = "gene"))
+    res <- rbind(res, parsedData)
+  }
+  return(res)
+}
+
+edgeRTest<-function (sub_data, min_gene_expressed, min_valid_cells, contrast = unique(sub_data$compare_group), 
+          calcNormMethod = "TMM", trend.method = "locfit", 
+          tagwise = TRUE, robust = FALSE) 
+{
+  counts <- t(subset(sub_data, select = -compare_group))
+  counts <- apply(counts, 2, function(x) {
+    storage.mode(x) <- "numeric"
+    x
+  })
+  expressed_genes <- rownames(subset(counts, rowSums(counts) >= 
+                                       min_gene_expressed))
+  valid_cells <- (colSums(counts) >= min_valid_cells)
+  counts <- counts[expressed_genes, valid_cells]
+  groups <- as.factor(sub_data[valid_cells, "compare_group"])
+  dgList <- DGEList(counts = counts, genes = rownames(counts), 
+                    group = groups)
+  dgList <- calcNormFactors(dgList, method = calcNormMethod)
+  designMat <- model.matrix(~groups)
+  dgList <- estimateDisp(dgList, design = designMat, trend.method = trend.method, 
+                         tagwise = tagwise, robust = robust)
+  et <- exactTest(dgList, pair = contrast)
+  res <- et$table[, c("logFC", "PValue")]
+  colnames(res) <- c("logFC", "p.value")
+  res <- res %>% mutate(q.value = p.adjust(res$p.value, method = "BH"))
+  gene <- rownames(counts)
+  res <- data.frame(gene, res, stringsAsFactors = FALSE)
+  return(res)
+}
+
+rawParse
+function (data, top_genes = 50, stats = "mean") 
+{
+  res = NULL
+  cell_group <- unique(data$cell_type)
+  pb <- progress::progress_bar$new(total = length(cell_group))
+  pb$tick(0)
+  for (i in cell_group) {
+    sub_data <- data[data$cell_type == i, ]
+    counts <- t(subset(sub_data, select = -cell_type))
+    counts <- apply(counts, 2, function(x) {
+      storage.mode(x) <- "numeric"
+      x
+    })
+    if (stats == "mean") {
+      temp <- data.frame(rowMeans(counts), i, stringsAsFactors = FALSE)
+    }
+    else if (stats == "median") {
+      temp <- data.frame(apply(counts, 1, FUN = median), 
+                         i, stringsAsFactors = FALSE)
+    }
+    else {
+      print("error stats option")
+    }
+    temp <- temp[order(temp[, 1], decreasing = TRUE), ]
+    temp <- temp[1:ceiling(nrow(temp) * top_genes/100), ]
+    temp <- temp %>% tibble::rownames_to_column()
+    res <- rbind(res, temp)
+    pb$tick()
+  }
+  colnames(res) <- c("gene", "exprs", "cell_type")
+  return(res)
+}
+
+
+database_iTALK <- database
+
+FindLR <- function (data_1, data_2 = NULL, datatype, comm_type, database = NULL) 
+{
+  if (is.null(database)) {
+    database <- database_iTALK
+  }
+  database <- database[database$Classification == comm_type, 
+                       ]
+  if (datatype == "mean count") {
+    gene_list_1 <- data_1
+    if (is.null(data_2)) {
+      gene_list_2 <- gene_list_1
+    }
+    else {
+      gene_list_2 <- data_2
+    }
+    ligand_ind <- which(database$Ligand.ApprovedSymbol %in% 
+                          gene_list_1$gene)
+    receptor_ind <- which(database$Receptor.ApprovedSymbol %in% 
+                            gene_list_2$gene)
+    ind <- intersect(ligand_ind, receptor_ind)
+    FilterTable_1 <- database[ind, c("Ligand.ApprovedSymbol", 
+                                     "Receptor.ApprovedSymbol")] %>% left_join(gene_list_1[, 
+                                                                                           c("gene", "exprs", "cell_type")], 
+                                                                               by = c(Ligand.ApprovedSymbol = "gene")) %>% 
+      dplyr::rename(cell_from_mean_exprs = exprs, cell_from = cell_type) %>% 
+      left_join(gene_list_2[, c("gene", "exprs", 
+                                "cell_type")], by = c(Receptor.ApprovedSymbol = "gene")) %>% 
+      dplyr::rename(cell_to_mean_exprs = exprs, cell_to = cell_type)
+    ligand_ind <- which(database$Ligand.ApprovedSymbol %in% 
+                          gene_list_2$gene)
+    receptor_ind <- which(database$Receptor.ApprovedSymbol %in% 
+                            gene_list_1$gene)
+    ind <- intersect(ligand_ind, receptor_ind)
+    FilterTable_2 <- database[ind, c("Ligand.ApprovedSymbol", 
+                                     "Receptor.ApprovedSymbol")] %>% left_join(gene_list_2[, 
+                                                                                           c("gene", "exprs", "cell_type")], 
+                                                                               by = c(Ligand.ApprovedSymbol = "gene")) %>% 
+      dplyr::rename(cell_from_mean_exprs = exprs, cell_from = cell_type) %>% 
+      left_join(gene_list_1[, c("gene", "exprs", 
+                                "cell_type")], by = c(Receptor.ApprovedSymbol = "gene")) %>% 
+      dplyr::rename(cell_to_mean_exprs = exprs, cell_to = cell_type)
+    FilterTable <- rbind(FilterTable_1, FilterTable_2)
+  }
+  else if (datatype == "DEG") {
+    gene_list_1 <- data_1
+    if (is.null(data_2)) {
+      gene_list_2 <- gene_list_1
+    }
+    else {
+      gene_list_2 <- data_2
+    }
+    ligand_ind <- which(database$Ligand.ApprovedSymbol %in% 
+                          gene_list_1$gene)
+    receptor_ind <- which(database$Receptor.ApprovedSymbol %in% 
+                            gene_list_2$gene)
+    ind <- intersect(ligand_ind, receptor_ind)
+    FilterTable_1 <- database[ind, c("Ligand.ApprovedSymbol", 
+                                     "Receptor.ApprovedSymbol")] %>% left_join(gene_list_1[, 
+                                                                                           c("gene", "logFC", "q.value", "cell_type")], 
+                                                                               by = c(Ligand.ApprovedSymbol = "gene")) %>% 
+      dplyr::rename(cell_from_logFC = logFC, cell_from_q.value = q.value, 
+                    cell_from = cell_type) %>% left_join(gene_list_2[, 
+                                                                     c("gene", "logFC", "q.value", "cell_type")], 
+                                                         by = c(Receptor.ApprovedSymbol = "gene")) %>% 
+      dplyr::rename(cell_to_logFC = logFC, cell_to_q.value = q.value, 
+                    cell_to = cell_type)
+    ligand_ind <- which(database$Ligand.ApprovedSymbol %in% 
+                          gene_list_2$gene)
+    receptor_ind <- which(database$Receptor.ApprovedSymbol %in% 
+                            gene_list_1$gene)
+    ind <- intersect(ligand_ind, receptor_ind)
+    FilterTable_2 <- database[ind, c("Ligand.ApprovedSymbol", 
+                                     "Receptor.ApprovedSymbol")] %>% left_join(gene_list_2[, 
+                                                                                           c("gene", "logFC", "q.value", "cell_type")], 
+                                                                               by = c(Ligand.ApprovedSymbol = "gene")) %>% 
+      dplyr::rename(cell_from_logFC = logFC, cell_from_q.value = q.value, 
+                    cell_from = cell_type) %>% left_join(gene_list_1[, 
+                                                                     c("gene", "logFC", "q.value", "cell_type")], 
+                                                         by = c(Receptor.ApprovedSymbol = "gene")) %>% 
+      dplyr::rename(cell_to_logFC = logFC, cell_to_q.value = q.value, 
+                    cell_to = cell_type)
+    FilterTable <- rbind(FilterTable_1, FilterTable_2)
+  }
+  else {
+    stop("Error: invalid data type")
+  }
+  FilterTable <- FilterTable[!duplicated(FilterTable), ]
+  res <- as.data.frame(FilterTable) %>% dplyr::rename(ligand = Ligand.ApprovedSymbol, 
+                                                      receptor = Receptor.ApprovedSymbol)
+  if (datatype == "DEG") {
+    res <- res[!(res$cell_from_logFC == 1e-04 & res$cell_to_logFC == 
+                   1e-04), ]
+  }
+  res <- res %>% mutate(comm_type = comm_type)
+  return(res)
+}
+
+
+
+DESeq2Test <-function (sub_data, min_gene_expressed, min_valid_cells, contrast = unique(sub_data$compare_group), 
+          test = "Wald", fitType = "parametric", sfType = "ratio", 
+          betaPrior = FALSE, quiet = FALSE, modelMatrixType = "standard", 
+          minReplicatesForReplace = 7, useT = FALSE, minmu = 0.5, parallel = FALSE, 
+          BPPARAM = bpparam()) 
+{
+  counts <- t(sub_data[, -ncol(sub_data)])
+  counts <- apply(counts, 2, function(x) {
+    storage.mode(x) <- "numeric"
+    x
+  })
+  expressed_genes <- rownames(subset(counts, rowSums(counts) >= 
+                                       min_gene_expressed))
+  valid_cells <- (colSums(counts) >= min_valid_cells)
+  counts <- counts[expressed_genes, valid_cells]
+  coldata <- as.data.frame(sub_data[valid_cells, "compare_group"])
+  rownames(coldata) <- rownames(sub_data[valid_cells, ])
+  colnames(coldata) <- "compare_group"
+  dds <- DESeqDataSetFromMatrix(countData = counts, colData = coldata, 
+                                design = ~compare_group)
+  dds$condition <- factor(dds$compare_group)
+  dds <- DESeq(dds, test = test, fitType = fitType, sfType = sfType, 
+               betaPrior = betaPrior, quiet = quiet, minReplicatesForReplace = minReplicatesForReplace, 
+               modelMatrixType = modelMatrixType, useT = useT, minmu = minmu, 
+               parallel = parallel, BPPARAM = BPPARAM)
+  res <- results(dds, contrast = c("compare_group", contrast))
+  res <- data.frame(rownames(counts), res$log2FoldChange, res$pvalue, 
+                    res$padj, stringsAsFactors = FALSE)
+  colnames(res) <- c("gene", "logFC", "p.value", 
+                     "q.value")
+  return(res)
+}
+
+
+
+
+
+yuxin_val <-function(c){
+  c[which(c$q.value < 0.05 & c$logFC >= 0),'DEGs'] <- 'up'
+  c[which(c$q.value < 0.05 & c$logFC <= -0),'DEGs'] <- 'down'
+  c[!(c$DEGs %in% c('up', 'down')),'DEGs'] <- 'no'
+  up <- paste("UP_DEG",nrow(c[which(c$DEGs == 'up'), ]),sep=":")
+  down <- paste("DOWN_DEG",nrow(c[which(c$DEGs == 'down'), ]),sep=":")
+  p1 <- ggplot(c, aes(x = logFC, y = -1*log10(q.value))) +
+    geom_point(aes(color = DEGs), size = 2) +
+    scale_colour_manual(limits = c('up', 'down', 'no'), values = c('red', 'blue', 'gray40'), labels = c(up, down)) +
+    labs(x = 'log2 Fold Change', y = '-log10 p-value') +
+    geom_hline(yintercept = -1*log10(0.05), color = 'gray', linetype = 2, size = 0.5) + 
+    geom_vline(xintercept = c(-2,2), color = 'gray', linetype = 2, size = 0.5)+
+    theme(legend.title = element_blank(), legend.key = element_rect(fill = 'transparent'), legend.background = element_rect(fill = 'transparent'))
+  p1 
+}
+
+
+yuxin_val <-function(c){
+  c[which(c$q.value < 0.05 & c$logFC >= 0),'DEGs'] <- 'up'
+  c[which(c$q.value < 0.05 & c$logFC <= -0),'DEGs'] <- 'down'
+  c[!(c$DEGs %in% c('up', 'down')),'DEGs'] <- 'no'
+  up <- paste("UP_DEG",nrow(c[which(c$DEGs == 'up'), ]),sep=":")
+  down <- paste("DOWN_DEG",nrow(c[which(c$DEGs == 'down'), ]),sep=":")
+  p1 <- ggplot(c, aes(x = logFC, y = -1*log10(q.value))) +
+    geom_point(aes(color = DEGs), size = 2) +
+    scale_colour_manual(limits = c('up', 'down', 'no'), values = c('red', 'blue', 'gray40'), labels = c(up, down)) +
+    labs(x = 'log2 Fold Change', y = '-log10 p-value') +
+    geom_hline(yintercept = -1*log10(0.05), color = 'gray', linetype = 2, size = 0.5) + 
+    geom_vline(xintercept = c(-2,2), color = 'gray', linetype = 2, size = 0.5)+
+    theme(legend.title = element_blank(), legend.key = element_rect(fill = 'transparent'), legend.background = element_rect(fill = 'transparent'))
+  p1 
+}
+
+yuxin_val_2 <-function(c){
+  c[which(c$p_val_adj < 0.05 & c$avg_logFC >= 0),'DEGs'] <- 'up'
+  c[which(c$p_val_adj < 0.05 & c$avg_logFC <= -0),'DEGs'] <- 'down'
+  c[!(c$DEGs %in% c('up', 'down')),'DEGs'] <- 'no'
+  up <- paste("UP_DEG",nrow(c[which(c$DEGs == 'up'), ]),sep=":")
+  down <- paste("DOWN_DEG",nrow(c[which(c$DEGs == 'down'), ]),sep=":")
+  p1 <- ggplot(c, aes(x = avg_logFC, y = -1*log10(p_val_adj))) +
+    geom_point(aes(color = DEGs), size = 2) +
+    scale_colour_manual(limits = c('up', 'down', 'no'), values = c('red', 'blue', 'gray40'), labels = c(up, down)) +
+    labs(x = 'log2 Fold Change', y = '-log10 p-value') +
+    geom_hline(yintercept = -1*log10(0.05), color = 'gray', linetype = 2, size = 0.5) + 
+    geom_vline(xintercept = c(-2,2), color = 'gray', linetype = 2, size = 0.5)+
+    theme(legend.title = element_blank(), legend.key = element_rect(fill = 'transparent'), legend.background = element_rect(fill = 'transparent'))
+  p1 
+}
+
+
+
+
+
+
+###KEGG
+KEGG_yuxin <- function(x){
+  kk <- enrichKEGG(x, organism="hsa", pvalueCutoff=0.05, pAdjustMethod="BH", 
+                   qvalueCutoff=0.05)
+  #kk <- simplify(kk, cutoff=0.7, by="p.adjust", select_fun=min)
+  GO <- kk@result
+  GO <- GO[order(GO$p.adjust),]
+  GO <- GO[which(GO$p.adjust <= 0.05), ]
+  GO <- GO[1:20,]
+  GO <-na.omit(GO)
+  GO$a=-log(GO$p.adjust) #定义一个数值  注意pathway接$来引用数值！
+  p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+  p=p+geom_point(aes(size=Count,color=a)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+  p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+  p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
+           title="Statisics of KEGG Enrichment")  #标签名称
+  p=p+theme_bw() #去除灰色背景
+  p
+}
+
+
+
+
+
+makeDEgenes.list_yuxin <- function(degene, change = c('UP','Down'),t){
+  Degenelist=list()
+  for (cells in unique(degene$cell_type)) {
+    if (change == 'UP') {
+      tmp.gene = degene %>% dplyr::filter(cell_type==cells, logFC>=t & q.value<0.05) %>% .$gene
+    }
+    else{
+      tmp.gene = degene %>% dplyr::filter(cell_type==cells, logFC <= t & q.value<0.05) %>% .$gene
+    }
+    eg = bitr(tmp.gene, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")#一步完成id转化
+    if (nrow(eg) == 0) {
+      eg$cell <- NULL
+    }
+    else{
+      eg$cell <- substitute(cells)
+    }
+    Degenelist[[cells]] <- eg
+  }
+  Degenelist <-do.call(rbind,Degenelist)
+  return(Degenelist)
+}
+
+
+makeDEgenes.list_yuxin_2 <- function(degene, change = c('UP','Down'),t){
+  Degenelist=list()
+  for (cells in unique(degene$cell_type)) {
+    if (change == 'UP') {
+      tmp.gene = degene %>% dplyr::filter(cell_type==cells, logFC>=t & q.value<0.05) %>% .$gene
+    }
+    else{
+      tmp.gene = degene %>% dplyr::filter(cell_type==cells, logFC <= t & q.value<0.05) %>% .$gene
+    }
+    eg = bitr(tmp.gene, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")#一步完成id转化
+    Degenelist[[cells]] <- eg$ENTREZID
+  }
+  return(Degenelist)
+}
+
+##该函数的变量是makeDEgenes.list_yuxin的结果
+
+
+KEGG_all_yuxin <- function(t){
+  kegg.list=list()
+  for (cells in unique(t$cell)) {
+    a <- t[which(t$cell==cells),]
+    kk <- enrichKEGG(a$ENTREZID, organism="hsa", pvalueCutoff=0.05, pAdjustMethod="BH", 
+                     qvalueCutoff=0.05)
+    GO <- kk@result
+    GO <- GO[order(GO$p.adjust),]
+    GO <- GO[which(GO$p.adjust <= 0.05), ]
+    GO <-na.omit(GO) 
+    if (nrow(GO)==0){
+      GO$cell <- NULL
+    }
+    else{
+      GO$cell <- cells
+    }
+    kegg.list[[cells]]=GO #每一个t作为list中的一个元素，命名为cell
+  }
+  kegg.list=do.call(rbind,kegg.list)
+  a<-kegg.list
+  a$b=-log(a$p.adjust)
+  p=ggplot(a,aes(cell,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+  p=p+geom_point(aes(size=Count,color=b)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+  p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+  p=p+labs(color=expression(p.adjust),size="Count",x="celltype",y="Pathway",
+           title="KEGG")  #标签名称
+  p=p+theme_bw() #去除灰色背景
+  p
+}
+
+
