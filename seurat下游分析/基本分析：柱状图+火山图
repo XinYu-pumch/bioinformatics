@@ -1,0 +1,32 @@
+#火山图
+c <- responseData_4v4[which(responseData_4v4$cell == "NK-2"),]
+c[which(c$p_val_adj < 0.05 & c$avg_logFC >= 0),'DEGs'] <- 'up'
+c[which(c$p_val_adj < 0.05 & c$avg_logFC <= -0),'DEGs'] <- 'down'
+c[!(c$DEGs %in% c('up', 'down')),'DEGs'] <- 'no'
+up <- paste("UP_DEG",nrow(c[which(c$DEGs == 'up'), ]),sep=":")
+down <- paste("DOWN_DEG",nrow(c[which(c$DEGs == 'down'), ]),sep=":")
+p1 <- ggplot(c, aes(x = avg_logFC, y = -1*log10(p_val_adj))) +
+geom_point(aes(color = DEGs), size = 2) +
+scale_colour_manual(limits = c('up', 'down', 'no'), values = c('red', 'blue', 'gray40'), labels = c(up, down)) +
+labs(x = 'log2 Fold Change', y = '-log10 p-value') +
+geom_hline(yintercept = -1*log10(0.05), color = 'gray', linetype = 2, size = 0.5) + 
+geom_vline(xintercept = c(-2,2), color = 'gray', linetype = 2, size = 0.5)+
+theme(legend.title = element_blank(), legend.key = element_rect(fill = 'transparent'), legend.background = element_rect(fill = 'transparent'))
+p1 
+
+
+bar.list <- list()
+for (cells in unique(deglist$cell)) {
+  up <- nrow(deglist[which(deglist$cell_type==cells & deglist$q.value<=0.05 &deglist$logFC>=0),])
+  down <- nrow(deglist[which(deglist$cell_type==cells & deglist$q.value<=0.05 &deglist$logFC<=0),])
+  int <- data.frame(number=c(up,down),cat=c("up","down"),cell=c(cells,cells),label=c(0,1))  ##注意还要多一个label以固定顺序
+  bar.list[[cells]]=int #每一个t作为list中的一个元素，命名为cell
+}
+bar.list=do.call(rbind,bar.list)
+
+ggplot(bar.list,aes(x=cell,y=number,fill=reorder(cat,label)))+
+  geom_bar(position="dodge",stat="identity")+
+  ggtitle("4v4;|Log2FC|>0 & qvalue <0.05")
+ggsave(filename="barplot.pdf",width=18,height=8,limitsize = FALSE)
+ 
+ 
