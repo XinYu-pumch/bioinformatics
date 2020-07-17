@@ -1,6 +1,8 @@
 ####The codes below are obtained from the function "LRplot" in "iTALK" package
 ####you can also create a new function based these codes
 
+When you've got your object "res", just run my codes and you'll get the plot
+
 ###first, set the parameter
 data <- res
 datatype<-'DEG'
