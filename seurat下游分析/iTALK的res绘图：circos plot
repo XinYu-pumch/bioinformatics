@@ -1,0 +1,157 @@
+###circos plot
+###总体参考https://www.jianshu.com/p/b589bc23d7a0
+###res已经通过iTALK得到
+
+
+library(circlize) 
+circos.clear() # circos.clear()  #这个命令用于清空画布，画错时要运行此命令重新再画。
+
+##首先构建gene的顺序，给每个"gene-cell-receptor/ligand"单独编号作为gene order，存储在df中
+data_2 <- res
+data_2$ligand_cell <- paste(data_2$ligand,data_2$cell_from,sep="|")
+data_2$receptor_cell <- paste(data_2$receptor,data_2$cell_to,sep="|")
+l_list <- list()
+for (lc in unique(data_2$ligand_cell)){
+  a <- data_2[which(data_2$ligand_cell==lc),]
+  b <- data.frame(cell=unique(a$cell_from),
+                  gene=unique(a$ligand),
+                  fc=unique(a$cell_from_logFC))
+  l_list[[lc]] <-b
+}
+l=do.call(rbind,l_list)
+rownames(l) <- NULL
+l$lr <- "ligand"
+
+r_list <- list()
+for (lc in unique(data_2$receptor_cell)){
+  a <- data_2[which(data_2$receptor_cell==lc),]
+  b <- data.frame(cell=unique(a$cell_to),
+                  gene=unique(a$receptor),
+                  fc=unique(a$cell_to_logFC))
+  r_list[[lc]] <-b
+}
+r=do.call(rbind,r_list)
+rownames(r) <- NULL
+r$lr <- "receptor"
+data_2<-rbind(l,r)
+data_2 <- data_2[order(data_2$cell,decreasing=T),]
+rownames(data_2) <- NULL
+data_2$gene_id <- paste("gene", rownames(data_2),sep="")
+data_2 <- data.frame(cell=data_2$cell,
+                    lr=data_2$lr,
+                    gene=data_2$gene,
+                    gene_id=data_2$gene_id,
+                    fc=data_2$fc)
+df <- data_2
+
+
+
+
+#整体布局，设置画布半径为1.1（外圈半径默认为1）
+circos.par(canvas.xlim =c(-1.1,1.1),canvas.ylim = c(-1.1,1.1),cell.padding = c(0.02,0,0.02,0))
+
+#画第一圈
+fa = df$gene_id
+fa = factor(fa,levels = fa) ##factor用来设定外圈有多少种类，用gene的秩来表示
+circos.initialize(factors = fa, xlim = c(0,1)) # 初始化
+
+#设置fc的大小对应的颜色，随着颜色从黑到黄到红过渡，fc值从-10至0至10
+col_fun = colorRamp2(c(-1, 0, 1.5), c("black", "yellow", "red"))
+#track.height指内外圈的半径差
+#bg.border设置每个区域的边界颜色。
+#bg.col设置每个区域的填充颜色，这里填充的是根据fc值大小所对应的 黑-黄-红 过渡颜色
+circos.trackPlotRegion(
+  ylim = c(0, 1), track.height = 0.15, bg.border = 'black', bg.col = col_fun(df$fc),
+  panel.fun = function(x, y) {
+    sector.index = get.cell.meta.data('sector.index')
+    xlim = get.cell.meta.data('xlim')
+    ylim = get.cell.meta.data('ylim')
+  } )
+
+#添加基因标签
+#sector.index即我们的区域索引第四列gene_id，
+#labels指的是具体要标注上去的内容，也就是第三列基因名。
+#其他的参数是调整标签的字体大小（labels.cex）、颜色（col）、方向（labels.facing）之类的
+for(i in 1:nrow(df)){
+  circos.axis(sector.index= df[i,4], direction = "outside", labels=df[i,3], 
+              labels.facing = "clockwise",labels.cex=.58, col = 'black',
+              labels.away.percentage=0.1, minor.ticks=0, major.at=seq(1, length(df$gene)))
+}
+
+##画第二圈
+circos.trackPlotRegion(
+  ylim = c(0, 1), track.height = 0.15, bg.border = NA,
+  panel.fun = function(x, y) {
+    sector.index = get.cell.meta.data('sector.index')
+    xlim = get.cell.meta.data('xlim')
+    ylim = get.cell.meta.data('ylim')
+  } )
+
+#添加cell，根据每个cell起止对应的gene order在图上标注cell
+for (cell in unique(df$cell)){
+  df_2 <-df
+  df_2$id <- rownames(df)
+  df_support <- df_2[which(df_2$cell==cell),]
+  highlight.sector(as.character(df$gene_id[min(df_support$id):max(df_support$id)]), track.index = 2,
+                   text = cell, niceFacing = F, font = 1, col = '#FFCC99')
+}
+
+##添加L和R,原理同上
+circos.trackPlotRegion(
+  ylim = c(0, 1), track.height = 0.08, bg.border = NA,
+  panel.fun = function(x, y) {
+    sector.index = get.cell.meta.data('sector.index')
+    xlim = get.cell.meta.data('xlim')
+    ylim = get.cell.meta.data('ylim')
+  } )
+df_2 <-df
+df_2$id <- rownames(df)
+df_2$clr <- paste(df_2$cell,df_2$lr,sep="|")
+for (t in unique(df_2$clr)){
+  df_support <- df_2[which(df_2$clr==t & df_2$lr=="ligand"),]
+  if (is.na(min(df_support$id))){
+    print("na")
+  }else
+    highlight.sector(as.character(df$gene_id[min(df_support$id):max(df_support$id)]), track.index = 3,
+                     text = 'L', niceFacing = F,col = '#FB8072',text.col = 'white')
+  
+  df_support <- df_2[which(df_2$clr==t & df_2$lr=="receptor"),]
+  if (is.na(min(df_support$id))){
+    print("na")
+  }else
+    highlight.sector(as.character(df$gene_id[min(df_support$id):max(df_support$id)]), track.index = 3,
+                     text = 'R', niceFacing = F,col = '#80B1D3',text.col = 'white')
+}
+
+##最后画箭头
+##首先将gene order匹配到res中，也就是ligand-receptor-pair中
+###ligand的order存储在geneid1，receptor的order存储在geneid2
+res_2 <- res
+res_2$ligand_support <- paste(res_2$cell_from, "ligand",res_2$ligand,sep="")
+res_2$receptor_support <- paste(res_2$cell_to, "receptor",res_2$receptor,sep="")
+res_2 <- res
+res_2$ligand_support <- paste(res_2$cell_from, "ligand",res_2$ligand,sep="")
+res_2$receptor_support <- paste(res_2$cell_to, "receptor",res_2$receptor,sep="")
+res_2 = within(res_2,{geneid1 = NA})
+res_2 = within(res_2,{geneid2 = NA})
+df_2 <- df
+df_2$support <- paste(df_2$cell, df_2$lr,df_2$gene,sep="")
+
+for (i in 1:nrow(res_2)){
+  a <- df_2[which(df_2$support== as.character(res_2[i,10])),]
+  res_2[i,12] <- as.character(a$gene_id)
+  b <- df_2[which(df_2$support== as.character(res_2[i,11])),]
+  res_2[i,13] <- as.character(b$gene_id)
+}
+
+
+#画箭头
+for(i in 1:nrow(res_2)){
+  circos.link(sector.index1 = res_2[i,12], point1 = 0,
+              sector.index2 = res_2[i,13], point2 = 0, directional = 1,
+              h=0.5, lwd=1, col="black",lty=1) 
+  }
+
+
+
+
