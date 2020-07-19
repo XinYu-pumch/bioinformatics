@@ -1,8 +1,5 @@
 ###circos plot
 ###总体参考https://www.jianshu.com/p/b589bc23d7a0
-###res已经通过iTALK得到
-
-
 library(circlize) 
 circos.clear() # circos.clear()  #这个命令用于清空画布，画错时要运行此命令重新再画。
 
@@ -88,12 +85,18 @@ circos.trackPlotRegion(
   } )
 
 #添加cell，根据每个cell起止对应的gene order在图上标注cell
+##设置颜色，代码见http://www.mamicode.com/info-detail-1448036.html
+col <- c("#FFB7DD","#FFCCCC","#FFC8B4","#FFDDAA","#FFEE99","#FFFFBB",
+         "#EEFFBB","#CCFF99","#99FF99","#BBFFEE",
+         "#AAFFEE","#99FFFF","#CCEEFF")
+i <- 0
 for (cell in unique(df$cell)){
+  i<-i+1
   df_2 <-df
   df_2$id <- rownames(df)
   df_support <- df_2[which(df_2$cell==cell),]
   highlight.sector(as.character(df$gene_id[min(df_support$id):max(df_support$id)]), track.index = 2,
-                   text = cell, niceFacing = F, font = 1, col = '#FFCC99')
+                   text = cell, niceFacing = F, font = 0.5, col = col[i])
 }
 
 ##添加L和R,原理同上
