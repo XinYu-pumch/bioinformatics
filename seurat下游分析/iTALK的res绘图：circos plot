@@ -53,7 +53,7 @@ fa = factor(fa,levels = fa) ##factor用来设定外圈有多少种类，用gene�
 circos.initialize(factors = fa, xlim = c(0,1)) # 初始化
 
 #设置fc的大小对应的颜色，随着颜色从黑到黄到红过渡，fc值从-10至0至10
-col_fun = colorRamp2(c(-1, 0, 1.5), c("black", "yellow", "red"))
+col_fun = colorRamp2(c(-2.5, 0, 2.5), c("green", "yellow", "red"))
 #track.height指内外圈的半径差
 #bg.border设置每个区域的边界颜色。
 #bg.col设置每个区域的填充颜色，这里填充的是根据fc值大小所对应的 黑-黄-红 过渡颜色
@@ -94,9 +94,10 @@ for (cell in unique(df$cell)){
   i<-i+1
   df_2 <-df
   df_2$id <- rownames(df)
+  df_2$id <- as.numeric(df_2$id)
   df_support <- df_2[which(df_2$cell==cell),]
   highlight.sector(as.character(df$gene_id[min(df_support$id):max(df_support$id)]), track.index = 2,
-                   text = cell, niceFacing = F, font = 0.5, col = col[i])
+                   text = cell, niceFacing = F, font = 0.5, col = "#FFEFD5") #col = col[i]
 }
 
 ##添加L和R,原理同上
@@ -107,19 +108,22 @@ circos.trackPlotRegion(
     xlim = get.cell.meta.data('xlim')
     ylim = get.cell.meta.data('ylim')
   } )
+
+
 df_2 <-df
 df_2$id <- rownames(df)
+df_2$id <- as.numeric(df_2$id)
 df_2$clr <- paste(df_2$cell,df_2$lr,sep="|")
 for (t in unique(df_2$clr)){
   df_support <- df_2[which(df_2$clr==t & df_2$lr=="ligand"),]
-  if (is.na(min(df_support$id))){
+  if (is.infinite(min(df_support$id))){
     print("na")
   }else
     highlight.sector(as.character(df$gene_id[min(df_support$id):max(df_support$id)]), track.index = 3,
                      text = 'L', niceFacing = F,col = '#FB8072',text.col = 'white')
   
   df_support <- df_2[which(df_2$clr==t & df_2$lr=="receptor"),]
-  if (is.na(min(df_support$id))){
+  if (is.infinite(min(df_support$id))){
     print("na")
   }else
     highlight.sector(as.character(df$gene_id[min(df_support$id):max(df_support$id)]), track.index = 3,
