@@ -306,8 +306,8 @@ DEG<-function (data, method, min_gene_expressed = 0, min_valid_cells = 0,
   res <- data.frame(res, cell_type, stringsAsFactors = FALSE)
   res <- res %>% dplyr::filter(q.value < q_cut)
   if (add) {
-    parsedData <- rawParse(data %>% select(-compare_group), 
-                           top = top, stats = stats) %>% select(c(gene, cell_type)) %>% 
+    parsedData <- rawParse(data %>% dplyr::select(-compare_group), 
+                           top = top, stats = stats) %>% dplyr::select(c(gene, cell_type)) %>% 
       dplyr::mutate(logFC = 1e-04, p.value = NA, q.value = NA)
     parsedData <- parsedData %>% anti_join(res, by = c(gene = "gene"))
     res <- rbind(res, parsedData)
