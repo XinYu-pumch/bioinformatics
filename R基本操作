@@ -34,6 +34,7 @@ BD_unique <- na.omit(BD_rp[match(support$support,BD_rp$support),,drop=F])
 
 #选取前几行
 data[1:5, ]
+data %>% dplyr::select(-compare_group)  %>% mutate(a*b) ##选取compare_group以外的列，并添加一列，值为a列*b列
 
 #保存对象为Rdata
 save(sce.integrated3, file = "T cell-test/Treg_PBMC.RData")
