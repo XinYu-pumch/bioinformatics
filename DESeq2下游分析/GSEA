@@ -1,0 +1,230 @@
+library(org.Hs.eg.db)
+library("clusterProfiler")
+library("DOSE")
+library(ggplot2)
+library(tidyr)
+####整体思路：DESeq2找DEG
+###批次效应的去除只在用rlogMat来展示PCA和热图的时候
+###GSEA可以展示特定的基因集
+
+raw_data <- read.csv("all_compare.csv", header = TRUE, sep = ",",quote="\"", dec=".",
+                         fill = TRUE,comment.char="",row.names = 1)
+data <- data.frame(BD1=raw_data$BD1_count,
+                   BD2=raw_data$BD2_count,
+                   BD3=raw_data$BD3_count,
+                   BD4=raw_data$BD4_count,
+                   HC1=raw_data$HC1_count,
+                   HC2=raw_data$HC2_count,
+                   HC3=raw_data$HC3_count,
+                   HC4=raw_data$HC4_count)
+rownames(data)<-rownames(raw_data)
+sample <- data.frame(condition=c("BD","BD","BD","BD","HC","HC","HC","HC"),
+                     batch=c("A","B","C","D","A","B","C","D"))
+rownames(sample)<-colnames(data)
+sample <- sample[match(colnames(data), rownames(sample)),, drop=F]
+sample_rowname <- rownames(sample)
+sample
+
+#找差异基因
+ddsFullCountTable <- DESeqDataSetFromMatrix(countData = data,
+                                            colData = sample,  
+                                            design = ~ batch+condition)
+dds <- DESeq(ddsFullCountTable)
+res <- results(dds)
+res <- res[order(res$padj),]
+res_padj <- res[which(res$padj <= 0.05), ]
+
+rld <- rlog(dds, blind=TRUE)
+rlogMat <- assay(rld)
+rlogMat <- rlogMat[which(rowSums(rlogMat==0)==0),]
+#对rld矫正，基于sva
+#注意sva法的矩阵是标准化过的
+modcombat = model.matrix(~1, data = sample)
+batch = sample$batch
+rlogMat = ComBat(dat=as.matrix(rlogMat), 
+                 batch=batch, 
+                 mod=modcombat, 
+                 par.prior=TRUE, prior.plots=TRUE)
+rlogMat3 <- na.omit(rlogMat[match(rownames(res), rownames(rlogMat)),, drop=F])
+raw_data_3 <- raw_data[match(rownames(res), rownames(raw_data)),, drop=F]
+rlogMat3 <- rlogMat3[match(rownames(raw_data_3), rownames(rlogMat3)),, drop=F]
+#tail(rownames(raw_data_3))
+#tail(rownames(rlogMat3))
+rownames(rlogMat3) <- raw_data_3$gene_name
+
+
+#热图
+rlogMat2 <- rlogMat[match(rownames(res_padj), rownames(rlogMat)),, drop=F]
+raw_data_2 <- raw_data[match(rownames(res_padj), rownames(raw_data)),, drop=F]
+rownames(rlogMat2) <- raw_data_2$gene_name
+pheatmap(rlogMat2, cluster_row=T, scale="row", 
+         annotation_col=sample['condition'],
+         fontsize_row = 6)
+
+
+
+
+
+#KEGG
+ENTREZID <- bitr(rownames(res_padj), fromType = "ENSEMBL",
+                 toType = c("ENTREZID"),
+                 OrgDb = org.Hs.eg.db)
+
+kk <- enrichKEGG(ENTREZID$ENTREZID, organism="hsa", pvalueCutoff=0.05, pAdjustMethod="BH", 
+                 qvalueCutoff=0.05)
+GO <- kk@result
+GO <- GO[order(GO$p.adjust),]
+GO <- GO[which(GO$p.adjust <= 0.05), ]
+#GO <- GO[1:20,]
+GO <-na.omit(GO)
+
+##将kegg的通路基因富集
+pathway_list <- list()
+for (pathway in unique(GO$Description)){
+  CK <- GO[which(GO$Description ==pathway),] 
+  CK_gene <- strsplit(CK$geneID,split='/')
+  CK_gene <- data.frame(id=CK_gene)
+  colnames(CK_gene)<- "id"
+  SYMBOL <- bitr(CK_gene$id, fromType = "ENTREZID",
+                   toType = c("SYMBOL"),
+                   OrgDb = org.Hs.eg.db)
+  pathway_list[[pathway]] <- SYMBOL$SYMBOL
+}
+###pheatmap特定的通路
+while (!is.null(dev.list()))  dev.off()
+i<-"Rheumatoid arthritis"
+ptw_to_pheat<- rlogMat2[match(c(pathway_list[[i]]), 
+                              rownames(rlogMat2)),, drop=F]
+pheatmap(ptw_to_pheat, cluster_row=T, scale="row", 
+         annotation_col=sample['condition'],
+         fontsize_row = 6,
+         main= i,filename=paste(i,"png",sep=".")) 
+pheatmap(ptw_to_pheat, cluster_row=T, scale="row", 
+         annotation_col=sample['condition'],
+         fontsize_row = 6,
+         main= i) 
+
+###或者pheatmap所有的通路
+for (i in  unique(names(pathway_list))){
+  ptw_to_pheat<- rlogMat2[match(c(pathway_list[[i]]), 
+                                rownames(rlogMat2)),, drop=F]
+  pheatmap(ptw_to_pheat, cluster_row=T, scale="row", 
+           annotation_col=sample['condition'],
+           fontsize_row = 6,
+           main= i)
+}
+
+for (i in  unique(names(pathway_list))){
+  ptw_to_pheat<- rlogMat2[match(c(pathway_list[[i]]), 
+                                rownames(rlogMat2)),, drop=F]
+  pheatmap(ptw_to_pheat, cluster_row=T, scale="row", 
+           annotation_col=sample['condition'],
+           fontsize_row = 6,
+           main= i,
+           paste("tem",paste(i,"png",sep="."),sep="/"))
+}
+
+###或者选定特定的gene进行展示
+chemokine <- rlogMat2[which(rownames(rlogMat2)=="CCL13"|
+                              rownames(rlogMat2)=="CXCL1"|
+                              rownames(rlogMat2)=="CXCL2"|
+                              rownames(rlogMat2)=="CXCL3"|
+                              rownames(rlogMat2)=="CXCL5"),]
+pheatmap(chemokine, cluster_row=T, scale="row", 
+         annotation_col=sample['condition'],
+         fontsize_row = 6)
+
+###GSEA
+ENTREZID_GSEA <- bitr(rownames(res), fromType = "ENSEMBL",
+                      toType = c("ENTREZID"),
+                      OrgDb = org.Hs.eg.db)
+GSEA=data.frame(gene=rownames(res),logFc=res$log2FoldChange)
+GSEA <- GSEA[match(ENTREZID_GSEA$ENSEMBL,GSEA$gene),,drop=F]
+GSEA$gene <-ENTREZID_GSEA$ENTREZID
+GSEA$logFc <- (-1)*GSEA$logFc #看情况是否降低
+GSEA <- GSEA[order(GSEA$logFc,decreasing= T),]
+
+
+##对KEGG通路进行GSEA富集
+genelist <- GSEA$logFc
+names(genelist) <- GSEA$gene
+genelist = na.omit(sort(genelist, decreasing = TRUE))
+kk_GSEA <- gseKEGG(geneList     = genelist,
+                   organism     = 'hsa',
+                   nPerm        = 1000,
+                   minGSSize    = 10,
+                   maxGSSize = 500,
+                   pvalueCutoff = 1,
+                   verbose      = FALSE)
+GSEA_result <- kk_GSEA@result[which(abs(kk_GSEA@result$NES)>=1 &
+                                    kk_GSEA@result$pvalue<=0.05),]
+a<-GSEA_result
+a$support=-log(a$pvalue) #定义一个数值  注意pathway接$来引用数值！
+p=ggplot(a,aes(support,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+p=p+geom_point(aes(size=setSize,color=NES)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+p=p+labs(color=expression(NES),size="setSize",x="-log(pvalue)",y="KEGG Term",
+         title="GSEA Enrichment")  #标签名称
+p=p+theme_bw() #去除灰色背景
+p
+
+#显示top20信号通路
+ggplot(GSEA_result, aes(reorder(Description, NES), NES)) +
+  geom_col(aes(fill= NES < 0)) +
+  coord_flip() +
+  labs(x="Pathway", y="NES",
+       title="KEGG pathways NES from GSEA") +
+  theme_minimal() ####以7.5进行绘图填色
+
+
+###GSEA的详细基因展示
+GSEA_genelist <- list()
+for (pathway in unique(GSEA_result$Description)){
+  CK <- GSEA_result[which(GSEA_result$Description ==pathway),] 
+  CK_gene <- strsplit(CK$core_enrichment,split='/')
+  CK_gene <- data.frame(id=CK_gene)
+  colnames(CK_gene)<- "id"
+  SYMBOL <- bitr(CK_gene$id, fromType = "ENTREZID",
+                 toType = c("SYMBOL"),
+                 OrgDb = org.Hs.eg.db)
+  GSEA_genelist[[pathway]] <- SYMBOL$SYMBOL
+}
+
+unique(GSEA_result$Description)
+i<-"Arginine biosynthesis"
+ptw_to_pheat<- rlogMat3[match(c(GSEA_genelist[[i]]), 
+                              rownames(rlogMat3)),, drop=F]
+pheatmap(ptw_to_pheat, cluster_row=T, scale="row", 
+         annotation_col=sample['condition'],
+         fontsize_row = 6,
+         main= i)
+
+
+##指定gsea
+library(msigdbr)
+library(fgsea)
+library(tibble)
+m_df<- msigdbr(species = "Homo sapiens", category = "C7")#我们使用C7免疫基因集;H是Hallmarker
+fgsea_sets<- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+fgsea_sets$GSE11057_NAIVE_VS_MEMORY_CD4_TCELL_UP  # $后面可以引用对应的数据集
+
+SYMBOL_GSEA <- bitr(rownames(res), fromType = "ENSEMBL",
+                      toType = c("SYMBOL"),
+                      OrgDb = org.Hs.eg.db)
+GSEA_2=data.frame(gene=rownames(res),logFc=res$log2FoldChange)
+GSEA_2 <- GSEA_2[match(SYMBOL_GSEA$ENSEMBL,GSEA_2$gene),,drop=F]
+GSEA_2$gene <-SYMBOL_GSEA$SYMBOL
+GSEA_2$logFc <- (-1)*GSEA_2$logFc #看情况是否降低
+GSEA_2 <- na.omit(GSEA_2[order(GSEA_2$logFc,decreasing= T),])
+GSEA_2 <- deframe(GSEA_2)
+fgseaRes<- fgsea(fgsea_sets, stats = GSEA_2, nperm = 1000)
+GSEA_result_2 <- fgseaRes[which(abs(fgseaRes$NES)>=1 &
+                                  fgseaRes$pval<=0.05),]
+
+
+ipn<-grep("*MACROPHAGE",GSEA_result_2$pathway,value=T)
+a <- GSEA_result_2[match(ipn,GSEA_result_2$pathway),,drop=T]
+
+t <- raw_data[match(pathway_list[["Cytokine-cytokine receptor interaction"]],
+                    raw_data$gene_name),,drop=T]
+write.csv(t,file="t.csv")
