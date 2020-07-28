@@ -1,0 +1,69 @@
+library(devtools)
+install_github("arc85/singleseqgset")
+library("singleseqgset")
+devtools::install_github('prestodb/RPresto')
+library("RPresto")
+install_github('immunogenomics/presto')
+library(presto)
+library(msigdbr)
+library(fgsea)
+library(dplyr)
+library(ggplot2)
+
+##参考：https://jishuin.proginn.com/p/763bfbd24004
+
+##思考：GSEA的input应该是什么？即使是DESeq2和MAST取padj为1，也会损失一些gene
+##这里的wilcoxauc提供了一个快速计算Log2FC的方式，且较为全面
+
+all_gene_list <- list()
+for (cells in unique(PBMC_anno$celltype)){
+  Idents(PBMC_anno) <- "celltype"
+  a <- subset(PBMC_anno,idents=cells,invert = FALSE)
+  b <- wilcoxauc(a, 'orig.ident2')
+  b$celltype <- cells
+  all_gene_list[[cells]] <-b
+}
+all_gene_gse <- do.call(rbind, all_gene_list)
+VlnPlot(PBMC_anno, features = c("CX3CR1"), do.return=T,spilt.by="orig.ident2") + geom_boxplot(width=0.1)
+
+all_gene_gse_BD <- all_gene_gse %>%
+  dplyr::filter(group == "BD")
+
+
+##用msigdbr获取geneset
+##C7是免疫学的基因集，很多免疫文章会上传相关基因集，也可以自己通过名称查询；一般较乱
+m_df<- msigdbr(species = "Homo sapiens", category = "C7")#我们使用C7免疫基因集;H是Hallmarker
+fgsea_sets<- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+fgsea_sets$GSE11057_NAIVE_VS_MEMORY_CD4_TCELL_UP  # $后面可以引用对应的数据集
+
+#CD16_Mo
+CD16_Mo_genes <- all_gene_gse_BD %>%
+  dplyr::filter(celltype == "CD16_Mo") %>%
+  arrange(desc(logFC)) %>%
+  dplyr::select(feature, logFC)
+CD16_Mo_genes <- deframe(CD16_Mo_genes)
+
+fgseaRes<- fgsea(fgsea_sets, stats = CD16_Mo_genes, nperm = 1000)
+
+fgseaResTidy <- fgseaRes %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+##也可以用clusterprofile对KEGG的geneset进行GSEA富集
+ENTREZID <- bitr(CD16_Mo_genes$feature, fromType = "SYMBOL",
+                 toType = c("ENTREZID"),
+                 OrgDb = org.Hs.eg.db)
+a <- CD16_Mo_genes[match(ENTREZID$SYMBOL,CD16_Mo_genes$feature),,drop=F]
+
+genelist <- a$logFC
+names(genelist) <- ENTREZID$ENTREZID
+genelist = na.omit(sort(genelist, decreasing = TRUE))
+kk_GSEA <- gseKEGG(geneList     = genelist,
+                   organism     = 'hsa',
+                   nPerm        = 1000,
+                   minGSSize    = 10,
+                   maxGSSize = 500,
+                   pvalueCutoff = 1,
+                   verbose      = TRUE)
+kk_GSEA_result <-kk_GSEA@result[which(kk_GSEA@result$pvalue<=0.05),]
+
