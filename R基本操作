@@ -80,3 +80,12 @@ df<-separate(df,b,into = c("b","c"),sep = "_")
 typeof(data1) #查看类型
 plot.data$pvalue <- as.numeric(as.character(plot.data$pvalue)) #将factor转化成number；注意必须先转化成character，再转化
 
+
+##看数据结构
+library(mindr)
+(out <- capture.output(str(cellchat)))
+out2 <- paste(out, collapse="\n")
+mm(gsub("\\.\\.@","# ",gsub("\\.\\. ","#",out2)),type ="text")
+##或者用str看
+str(cellchat)
+
