@@ -1,0 +1,127 @@
+BiocManager::install("slingshot")
+library(slingshot)
+BiocManager::install("BUSpaRse")
+library(BUSpaRse)
+install.packages("tidymodels")
+library(tidymodels)
+library(tidyverse)
+library(Seurat)
+library(scales)
+library(viridis)
+library(Matrix)
+library(rsample)
+library(parsnip)
+library(yardstick)
+library(janitor)
+library(riskyr)
+
+install.packages("riskyr")
+BiocManager::install("artyfarty")
+
+sds <- slingshot(Embeddings(mono.obj.all, "umap"), clusterLabels = mono.obj.all$seurat_clusters, 
+                 start.clus = 0, stretch = 0)
+
+cell_pal <- function(cell_vars, pal_fun,...) {
+  if (is.numeric(cell_vars)) {
+    pal <- pal_fun(100, ...)
+    return(pal[cut(cell_vars, breaks = 100)])
+  } else {
+    categories <- sort(unique(cell_vars))
+    pal <- setNames(pal_fun(length(categories), ...), categories)
+    return(pal[cell_vars])
+  }
+}
+
+cell_colors <- cell_pal(mono.obj.all$seurat_clusters, brewer_pal("qual", "Set2"))
+cell_colors_clust <- cell_pal(mono.obj.all$seurat_clusters, hue_pal())
+
+plot(reducedDim(sds), col = cell_colors, pch = 16, cex = 0.5)
+lines(sds, lwd = 2, type = 'lineages', col = 'black')
+
+#DEG
+top_hvg <- HVFInfo(mono.obj.all) %>% 
+  mutate(., bc = rownames(.)) %>% 
+  arrange(desc(variance.standardized)) %>% 
+  top_n(300, variance.standardized) %>% 
+  pull(bc)
+
+# Prepare data for random forest
+dat_use <- t(GetAssayData(mono.obj.all, slot = "data")[top_hvg,])
+dat_use_df <- cbind(slingPseudotime(sds)[,2], dat_use) # Do curve 2, so 2nd columnn
+colnames(dat_use_df)[1] <- "pseudotime"
+dat_use_df <- as.data.frame(dat_use_df[!is.na(dat_use_df[,1]),])
+
+dat_split <- initial_split(dat_use_df)
+dat_train <- training(dat_split)
+dat_val <- testing(dat_split)
+dat_val <- janitor::clean_names(dat_val)
+#dat_train的rownames可能有问题，所以需要janitor::clean_names清理一下异常的格式
+#限速步
+a <- janitor::clean_names(dat_train)
+model <- rand_forest(mtry = 200, trees = 1400, min_n = 15, mode = "regression") %>%
+  set_engine("ranger", importance = "impurity", num.threads = 3) %>%
+  fit(pseudotime ~ ., data = a)
+#这一步可能有问题！原文是predict(model, .[,-1])，不知道“.”的意思
+val_results <- dat_val %>% mutate(estimate = predict(model, dat_val[,-1]) %>% pull()) %>% dplyr::select(truth = pseudotime, estimate)
+
+metrics(data = val_results, truth, estimate)
+
+var_imp <- sort(model$fit$variable.importance, decreasing = TRUE)
+top_genes <- names(var_imp)
+top_genes <- names(var_imp)[1:6]
+
+##top_genes被janitor清洗过，因此需要重新整理一下
+gene_janitor <- data.frame(before=colnames(dat_train),after=colnames(a))
+gene_janitor <- gene_janitor[match(top_genes,gene_janitor$after),,drop=F]
+top_genes <- gene_janitor$before
+View(top_genes)
+
+###官网的此步骤，color可能存在问题
+par(mfrow = c(3, 2))
+for (i in seq_along(top_genes)) {
+  colors <- riskyr::pal[cut(dat_use[,top_genes[i]], breaks = 100)]
+  plot(reducedDim(sds), col = colors, 
+       pch = 16, cex = 0.5, main = top_genes[i])
+  lines(sds, lwd = 2, col = 'black', type = 'lineages')
+}
+
+##或者自己画
+##自己构建一个颜色梯度
+#gene_to_plot <- "S100A12"
+par(mfrow = c(3, 2))
+for(gene_to_plot in unique(top_genes)){
+  k <- 5
+  df <- data.frame(value=dat_use[,gene_to_plot])
+  support <- df %>%
+    mutate(tercile = ntile(value, k))
+  df$rank <- support$tercile
+  colors_to_set <- colorRampPalette(c("green", "red"))(k)
+  for (t in 1:k){
+    df[which(df$rank == t),'color'] <- colors_to_set[t]
+  }
+  plot(reducedDim(sds), col = df$color, 
+       pch = 16, cex = 0.5, main = gene_to_plot)
+  lines(sds, lwd = 2, col = 'black', type = 'lineages')
+}
+
+top_genes
+#HLA-DRA  S100A12  CD74     S100A9   HLA-DPA1 S100A8 
+
+while (!is.null(dev.list()))  dev.off()
+gene_to_plot <- "ISG15"
+k <- 5
+df <- data.frame(value=dat_use[,gene_to_plot])
+support <- df %>%
+  mutate(tercile = ntile(value, k))
+df$rank <- support$tercile
+colors_to_set <- colorRampPalette(c("green", "red"))(k)
+for (t in 1:k){
+  df[which(df$rank == t),'color'] <- colors_to_set[t]
+}
+plot(reducedDim(sds), col = df$color, 
+     pch = 16, cex = 0.5, main = gene_to_plot)
+lines(sds, lwd = 2, col = 'black', type = 'lineages')
+
+
+
+
