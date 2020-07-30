@@ -1,0 +1,70 @@
+devtools::install_github("sqjin/CellChat")
+library(CellChat)
+library(ggplot2)
+library(ggalluvial)
+library(svglite)
+library(Seurat)
+library(NMF)
+
+Idents(PBMC_anno)<-"orig.ident2"
+PBMC_anno_BD <- subset(PBMC_anno,idents=c("HC"),invert = FALSE)
+
+data.input  <- PBMC_anno_BD@assays$RNA@data
+identity = data.frame(group =PBMC_anno_BD$celltype   , row.names = names(PBMC_anno_BD$celltype)) 
+cellchat <- createCellChat(data = data.input)
+cellchat
+cellchat <- addMeta(cellchat, meta = identity, meta.name = "labels")
+cellchat <- setIdent(cellchat, ident.use = "labels") # set "labels" as default cell identity
+groupSize <- as.numeric(table(cellchat@idents))
+
+#导入受体配体库
+CellChatDB <- CellChatDB.human
+#CellChatDB.use <- subsetDB(CellChatDB, search = "Secreted Signaling") 
+#比如也可以指定secreted protein
+cellchat@DB <- CellChatDB
+
+#对数据预处理
+cellchat <- subsetData(cellchat) # subset the expression data of signaling genes for saving computation cost
+future::plan("multiprocess", workers = 4) # do parallel  这里似乎有一些bug，在Linux上居然不行。de了它。
+cellchat <- identifyOverExpressedGenes(cellchat)
+cellchat <- identifyOverExpressedInteractions(cellchat)
+cellchat <- projectData(cellchat, PPI.human) 
+#限速步骤
+cellchat <- computeCommunProb(cellchat)
+cellchat <- computeCommunProbPathway(cellchat)
+cellchat <- aggregateNet(cellchat)
+cellchat@netP$pathways
+head(cellchat@LR$LRsig)
+
+##展示特定通路
+levels(cellchat@idents) 
+vertex.receiver = seq(1,4) # a numeric vector
+# check the order of cell identity to set suitable vertex.receiver
+#cellchat@LR$LRsig$pathway_name
+#cellchat@LR$LRsig$antagonist
+pathways.show <- "MIF"
+netVisual_aggregate(cellchat, signaling = pathways.show,  
+                      vertex.receiver = vertex.receiver, 
+                      vertex.size = groupSize)
+
+netVisual_aggregate(cellchat, signaling = c("MIF"), 
+                    layout = "circle", 
+                    vertex.size = groupSize,pt.title=20,vertex.label.cex = 1.7)
+netAnalysis_contribution(cellchat, signaling = pathways.show)
+##计算中心性
+cellchat <- netAnalysis_signalingRole(cellchat, slot.name = "netP") # the slot 'netP' means the inferred intercellular communication network of signaling pathways
+
+netVisual_signalingRole(cellchat, signaling = pathways.show, 
+                        width = 12, height = 2.5, font.size = 10)
+
+nPatterns = 5 
+cellchat <- identifyCommunicationPatterns(cellchat, pattern = "outgoing", k = nPatterns) 
+# Visualize the communication pattern using river plot
+netAnalysis_river(cellchat, pattern = "outgoing")
+# Visualize the communication pattern using dot plot
+netAnalysis_dot(cellchat, pattern = "outgoing")
+#对incoming也是如此
+netAnalysis_river(cellchat, pattern = "incoming")
+netAnalysis_dot(cellchat, pattern = "incoming")
+
+save(cellchat,file="T cell-test/cellchat/cellchat_HC.RData")
