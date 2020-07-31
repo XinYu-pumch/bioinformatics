@@ -13,6 +13,23 @@ C <- data.frame(id1=c(1:5),id2=c(11:15))
 #将稀疏矩阵转化为矩阵（不用导入导出csv了）
 a <- as(sce.integrated4_HC@assays$RNA@counts, "matrix")
 
+##管道操作符https://zhuanlan.zhihu.com/p/22955050?refer=rdatamining
+filter(flights, month == 1, day == 1) #筛选：且
+filter(flights, month == 1 | month == 2) #筛选：或
+arrange(flights, year, month, day) #依次排序
+select(flights, year, month, day) #选取特定列
+select(flights, year:day) #选取特定列
+distinct(select(flights, origin, dest)) #选取了origin和dest列中不一致的行
+mutate(flights,gain = arr_delay - dep_delay, speed = distance/air_time * 60)  #生成新的列并添加
+transmute(flights,gain = arr_delay - dep_delay, gain_per_hour = gain / (air_time / 60)) #只生成新的列
+n(x) #x中行的数量
+n_distinct(x): #x中不重复行的数量
+first(x), last(x) #x中第一行与最后一行
+all_markers%>%
+       filter(cluster=="C1q_Mo")
+
+
+
 #筛选，查找个数
 res_padj <- res_padj[which(abs(res_padj$log2FoldChange) >= 1), ]
 nrow(c[which(c$DEGs == 'down'), ])
@@ -88,4 +105,6 @@ out2 <- paste(out, collapse="\n")
 mm(gsub("\\.\\.@","# ",gsub("\\.\\. ","#",out2)),type ="text")
 ##或者用str看
 str(cellchat)
+
+
 
