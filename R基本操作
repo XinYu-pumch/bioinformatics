@@ -7,6 +7,10 @@ BiocManager::install("clusterProfiler")
 
 #去除重复项目
 unique
+#求交集、并集
+intersect(x=1:4, y = 2:6)#交集
+union(x=1:4, y = 2:6)#并集
+setdiff(y, x)#找y中不同于x的元素
 
 #构建矩阵
 C <- data.frame(id1=c(1:5),id2=c(11:15))
