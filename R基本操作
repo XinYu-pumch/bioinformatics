@@ -36,6 +36,7 @@ all_markers%>%
 
 #筛选，查找个数
 res_padj <- res_padj[which(abs(res_padj$log2FoldChange) >= 1), ]
+pathway[which(pathway$ligand %in% C1q_unique_ligand$ligand),]  ###  %in%对向量筛选
 nrow(c[which(c$DEGs == 'down'), ])
 #去除所有为0的行
 av.exp_2 <- av.exp_2[which(rowSums(av.exp_2==0)==0),]
