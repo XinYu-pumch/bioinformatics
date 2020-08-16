@@ -31,7 +31,8 @@ n_distinct(x): #x中不重复行的数量
 first(x), last(x) #x中第一行与最后一行
 all_markers%>%
        filter(cluster=="C1q_Mo")
-
+#提取包含某个字段的列
+b <-GSEA_result[grep(pattern="disease",GSEA_result$Description),]
 
 
 #筛选，查找个数
