@@ -33,7 +33,7 @@ all_markers%>%
        filter(cluster=="C1q_Mo")
 #提取包含某个字段的列
 b <-GSEA_result[grep(pattern="disease",GSEA_result$Description),]
-
+b <-GSEA_result[grep(pattern="disease",GSEA_result$Description，inverse=TRUE),]
 
 #筛选，查找个数
 res_padj <- res_padj[which(abs(res_padj$log2FoldChange) >= 1), ]
