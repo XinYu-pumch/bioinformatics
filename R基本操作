@@ -14,6 +14,8 @@ setdiff(y, x)#找y中不同于x的元素
 
 #构建矩阵
 C <- data.frame(id1=c(1:5),id2=c(11:15))
+c <- as.data.frame(matrix(data=NA,nrow=100,ncol=100))
+
 #将稀疏矩阵转化为矩阵（不用导入导出csv了）
 a <- as(sce.integrated4_HC@assays$RNA@counts, "matrix")
 
