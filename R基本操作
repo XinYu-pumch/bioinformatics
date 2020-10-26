@@ -4,6 +4,10 @@
 #https://mirrors.tuna.tsinghua.edu.cn/bioconductor
 options(BioC_mirror="https://mirrors.tuna.tsinghua.edu.cn/bioconductor/")
 BiocManager::install("clusterProfiler")
+#手动安装install_github
+devtools::install_github('prestodb/RPresto')
+##可以在https://codeload.github.com/prestodb/RPresto/legacy.tar.gz/master直接下载，做对应替换即可！！
+
 
 #去除重复项目
 unique
