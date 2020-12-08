@@ -21,3 +21,6 @@ PermitRootLogin
 
 
 vim /Users/xubin/.ssh/id_rsa.pub
+
+#simple vm及其安装文件
+https://github.com/mibosshard/SimpleVM/releases/download/20201128/SimpleVM_Ubuntu.zip
