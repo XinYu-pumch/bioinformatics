@@ -9,3 +9,15 @@ sudo chmod 777 /etc/apt/sources.list
 vim /etc/apt/sources.list
 #i插入，ggVG全选删除，esc操作，:wq保存并退出
 #全删除，选择对应版本
+
+
+sudo sed -i "/^[^#]*PasswordAuthentication[[:space:]]no/c\PasswordAuthentication yes" /etc/ssh/sshd_config
+ sudo service sshd restart
+##PasswordAuthentication yes　　　　　　# 口令登录
+##RSAAuthentication yes　　　　　　　　　# RSA认证
+###PubkeyAuthentication yes
+PermitRootLogin
+
+
+
+vim /Users/xubin/.ssh/id_rsa.pub
