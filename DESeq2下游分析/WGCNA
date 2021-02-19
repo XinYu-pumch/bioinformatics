@@ -1,0 +1,206 @@
+##尝试WGCNA
+##注意raw_data需要用归一化的数据
+#参考：https://horvath.genetics.ucla.edu/html/CoexpressionNetwork/Rpackages/WGCNA/Tutorials/
+#参考：http://www.bio-info-trainee.com/2535.html
+library("WGCNA")
+
+raw_data <- read.csv("proteomics/proteomics_wgcna.csv", header = TRUE, sep = ",",quote="\"", dec=".",
+                     fill = TRUE,comment.char="",row.names = 1)
+raw_data <- log2(raw_data)##总之用某种方法使得表达量可以标准化，log，fpkm，z-score均可
+datExpr0 <- t(raw_data) ##需要转置
+
+
+##检验是否有NA
+gsg = goodSamplesGenes(datExpr0, verbose = 3)
+gsg$allOK
+if (!gsg$allOK)
+{
+  # Optionally, print the gene and sample names that were removed:
+  if (sum(!gsg$goodGenes)>0)
+    printFlush(paste("Removing genes:", paste(names(datExpr0)[!gsg$goodGenes], collapse = ", ")));
+  if (sum(!gsg$goodSamples)>0)
+    printFlush(paste("Removing samples:", paste(rownames(datExpr0)[!gsg$goodSamples], collapse = ", ")));
+  # Remove the offending genes and samples from the data:
+  datExpr0 = datExpr0[gsg$goodSamples, gsg$goodGenes]
+}
+
+#检测是否需要剔除smaple
+sampleTree = hclust(dist(datExpr0), method = "average");
+par(cex = 0.6);
+par(mar = c(0,4,2,0))
+while (!is.null(dev.list()))  dev.off()
+plot(sampleTree, main = "Sample clustering to detect outliers", sub="", xlab="", cex.lab = 1.5,
+     cex.axis = 1.5, cex.main = 2)
+
+##sample筛选，如果有sample离群，则剔除
+h <- 1.5*10^9  #设置剔除的阈值（根据聚类图来看）
+abline(h = h, col = "red");
+# Determine cluster under the line
+clust = cutreeStatic(sampleTree, cutHeight = h, minSize = 10)
+table(clust)
+# clust 1 contains the samples we want to keep.
+keepSamples = (clust==1)
+datExpr = datExpr0[keepSamples, ]
+##
+datExpr <- datExpr0
+nGenes = ncol(datExpr)
+nSamples = nrow(datExpr)
+
+
+
+##构建traitdata（样本-性状的表格）
+datTraits <- read.csv("proteomics/traitData.csv"
+                      , header = TRUE, sep = ",",quote="\"", dec=".",
+                      fill = TRUE,comment.char="",row.names = 1)
+
+
+### 核心步骤一：网络拓扑分析（限速步骤）
+powers = c(c(1:10), seq(from = 12, to=20, by=2))
+###绘图：绘制soft threshold power（即β，是x轴），分别和“网络中log(k)与log(p(k))相关系数的平方”与“对应的基因模块中所有基因邻接函数的均值”的关系
+##我们需要找到最合适的β，这个数值貌似自动保存在了sft$powerEstimate中
+##具体教程见http://www.bio-info-trainee.com/2535.html
+sft = pickSoftThreshold(datExpr, powerVector = powers, verbose = 5)
+par(mfrow = c(1,2));
+cex1 = 0.9;
+plot(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+     xlab="Soft Threshold (power)",ylab="Scale Free Topology Model Fit,signed R^2",type="n",
+     main = paste("Scale independence"));
+text(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+     labels=powers,cex=cex1,col="red");
+abline(h=0.90,col="red")
+plot(sft$fitIndices[,1], sft$fitIndices[,5],
+     xlab="Soft Threshold (power)",ylab="Mean Connectivity", type="n",
+     main = paste("Mean connectivity"))
+text(sft$fitIndices[,1], sft$fitIndices[,5], labels=powers, cex=cex1,col="red")
+sft$powerEstimate
+
+##核心步骤二：构建共表达矩阵
+net = blockwiseModules(
+  datExpr,
+  power = sft$powerEstimate,
+  maxBlockSize = 6000,
+  TOMType = "unsigned", minModuleSize = 30,
+  reassignThreshold = 0, mergeCutHeight = 0.25,
+  numericLabels = TRUE, pamRespectsDendro = FALSE,
+  saveTOMs = TRUE,
+  saveTOMFileBase = "AS-green-FPKM-TOM",
+  verbose = 3
+)
+table(net$colors)
+
+
+##将模块可视化。注意灰色模块即mode0不能有太多gene，否则说明gene选取不当
+mergedColors = labels2colors(net$colors)
+table(mergedColors)
+# Plot the dendrogram and the module colors underneath
+plotDendroAndColors(net$dendrograms[[1]], mergedColors[net$blockGenes[[1]]],
+                    "Module colors",
+                    dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05)
+
+####给样本针对datTraits中的某一个特征进行聚类，看是否真的符合
+##不符合也没关系
+nGenes = ncol(datExpr)
+nSamples = nrow(datExpr)
+#首先针对样本做个系统聚类树
+datExpr_tree<-hclust(dist(datExpr), method = "average")
+par(mar = c(0,5,2,0))
+plot(datExpr_tree, main = "Sample clustering", sub="", xlab="", cex.lab = 2, 
+     cex.axis = 1, cex.main = 1,cex.lab=1)
+sample_colors <- numbers2colors(as.numeric(factor(datTraits$timing)), signed = FALSE,
+                                colors = c("white","blue","red","green"),)
+par(mar = c(1,4,3,1),cex=0.8)
+plotDendroAndColors(datExpr_tree, sample_colors,
+                    groupLabels = colnames(sample),
+                    cex.dendroLabels = 0.8,
+                    marAll = c(1, 4, 3, 1),
+                    cex.rowText = 0.01,
+                    main = "Sample dendrogram and trait heatmap")
+
+
+
+##核心步骤三
+nGenes = ncol(datExpr)
+nSamples = nrow(datExpr)
+datTraits$timing <- as.factor(datTraits$timing)
+design=model.matrix(~0+ datTraits$timing)
+colnames(design) <- levels(as.factor(datTraits$timing))
+
+moduleColors <- labels2colors(net$colors)
+# Recalculate MEs with color labels
+MEs0 = moduleEigengenes(datExpr, moduleColors)$eigengenes
+MEs = orderMEs(MEs0); ##不同颜色的模块的ME值矩阵(样本vs模块)
+moduleTraitCor = cor(MEs, design , use = "p");
+moduleTraitPvalue = corPvalueStudent(moduleTraitCor, nSamples)
+
+sizeGrWindow(10,6)
+# Will display correlations and their p-values
+textMatrix = paste(signif(moduleTraitCor, 2), "\n(",
+                   signif(moduleTraitPvalue, 1), ")", sep = "");
+dim(textMatrix) = dim(moduleTraitCor)
+par(mar = c(6, 8.5, 3, 3));
+# Display the correlation values within a heatmap plot
+labeledHeatmap(Matrix = moduleTraitCor,
+               xLabels = colnames(design),
+               yLabels = names(MEs),
+               ySymbols = names(MEs),
+               colorLabels = FALSE,
+               colors = greenWhiteRed(50),
+               textMatrix = textMatrix,
+               setStdMargins = FALSE,
+               cex.text = 0.5,
+               zlim = c(-1,1),
+               main = paste("Module-trait relationships"))
+
+
+###
+modNames = substring(names(MEs), 3)
+geneModuleMembership = as.data.frame(cor(datExpr, MEs, use = "p"))
+MMPvalue = as.data.frame(corPvalueStudent(as.matrix(geneModuleMembership), nSamples));
+names(geneModuleMembership) = paste("MM", modNames, sep="");
+names(MMPvalue) = paste("p.MM", modNames, sep="");
+geneTraitSignificance = as.data.frame(cor(datExpr, design, use = "p"));
+GSPvalue = as.data.frame(corPvalueStudent(as.matrix(geneTraitSignificance), nSamples));
+names(geneTraitSignificance) = paste("GS.", colnames(design), sep="");
+names(GSPvalue) = paste("p.GS.", colnames(design), sep="");
+
+geneInfo0 = data.frame(substanceBXH = colnames(datExpr),
+                       moduleColor = moduleColors,
+                       geneTraitSignificance,
+                       GSPvalue,
+                       MMPvalue)
+
+
+MEturquoise
+
+###将差异基因和mode关联（超几何分布）
+###deg_condition_2.csv是所有condition之间的DEG，额外添加了一列condition以描述
+input  <- read.csv("proteomics/deg_condition_2.csv")
+stat_list <- list()
+for (a in unique(input$condition)){
+  input_condition <- input %>% filter(condition == a)
+  input_intersect_condition  <- na.omit(input_condition[match(rownames(geneInfo0),input_condition$T..Protein.IDs),,drop=T])
+  table <- list()
+  for (color in unique(geneInfo0$moduleColor)){
+    geneInfo0_color <- geneInfo0 %>% filter(moduleColors == color)
+    table[[color]] = data.frame(
+      deg_in_color = length(intersect(input_intersect_condition$T..Protein.IDs,rownames(geneInfo0_color))),
+      DEG = nrow(input_intersect_condition),
+      all_minus_deg = nrow(geneInfo0)-nrow(input_intersect_condition),
+      color_in_all = nrow(geneInfo0_color),
+      color = color,
+      condition=a
+    )
+  }
+  table <- do.call(rbind, table)
+  stat_list[[a]] <- table
+}
+
+stat_list <- do.call(rbind,stat_list)
+stat_list$pvalue <- 1-phyper(stat_list$deg_in_color,
+                             stat_list$DEG,
+                             stat_list$all_minus_deg,
+                             stat_list$color_in_all)
+write.csv(geneInfo0,file="proteomics/geneInfo0.csv")
+write.csv(stat_list,file="proteomics/stat_list.csv")
+
