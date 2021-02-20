@@ -28,3 +28,13 @@ data.plot %>%
   scale_color_manual(values=c(colHC,colBD))+
   stat_compare_means(method = "t.test",aes(group=condition),label = "p.signif")->p
 p
+
+###如果采用堆叠的柱状图的话可以用ggplot，position=fill
+data.plot %>%
+  ggplot(mapping = aes(x = factor(celltype), y = ratio, fill = condition)) + 
+  geom_bar(stat = 'identity',position = 'fill')+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_fill_manual(values=c(colHC,colBD))+
+  scale_color_manual(values=c(colHC,colBD))+
+  stat_compare_means(method = "t.test",aes(group=condition),label = "p.signif")->p
+p
