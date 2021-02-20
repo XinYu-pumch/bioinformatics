@@ -2,6 +2,8 @@
 #如：Seurat <- Seurat::CellCycleScoring(object = mono.obj.all_rename, s.features = Ma_genes, g2m.features = DC_genes, set.ident = TRUE)
 #s.features本来是S phase gene，是向量，g2m同理
 #计算完毕后会在Seurat得到新的列，分别是S.score, G2m.score和phase；phase就是基于前两个score来判断的，此处我们不需要
+##关于CellCycleScoring的分析可见   https://academic.oup.com/nar/article/47/21/e133/5531181
+
 
 #首先我们需要先找到我们要的geneset
 ##直接去https://www.gsea-msigdb.org/gsea/msigdb/genesets.jsp找即可
