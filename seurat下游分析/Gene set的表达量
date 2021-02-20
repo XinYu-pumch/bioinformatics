@@ -1,0 +1,79 @@
+##Seura其实提供了一个CellCycleScoring函数，能够快速运算一个gene set在一个细胞中的表达量
+#如：Seurat <- Seurat::CellCycleScoring(object = mono.obj.all_rename, s.features = Ma_genes, g2m.features = DC_genes, set.ident = TRUE)
+#s.features本来是S phase gene，是向量，g2m同理
+#计算完毕后会在Seurat得到新的列，分别是S.score, G2m.score和phase；phase就是基于前两个score来判断的，此处我们不需要
+
+#首先我们需要先找到我们要的geneset
+##直接去https://www.gsea-msigdb.org/gsea/msigdb/genesets.jsp找即可
+library(fgsea)
+library(msigdbr)
+
+mdb_c2 <- msigdbr(species = "Homo sapiens", category = "C2")
+mdb_kegg = mdb_c2 [grep("^KEGG",mdb_c2 $gs_name),]
+fgsea_sets<- mdb_kegg %>% split(x = .$gene_symbol, f = .$gs_name)
+fgsea_sets$GO_MACROPHAGE_DIFFERENTIATION
+
+mdb_c5 <- msigdbr(species = "Homo sapiens", category = "C5")
+mdb_GO = mdb_c5 [grep("^GO",mdb_c5 $gs_name),]
+fgsea_sets<- mdb_GO %>% split(x = .$gene_symbol, f = .$gs_name)
+fgsea_sets$GO_MACROPHAGE_DIFFERENTIATION
+fgsea_sets$GO_DENDRITIC_CELL_DIFFERENTIATION
+
+Ma_genes <- fgsea_sets$GO_MACROPHAGE_DIFFERENTIATION
+Ma_genes <- Ma_genes[Ma_genes %in% rownames(mono.obj.all_rename)] # genes in dataset
+DC_genes <- fgsea_sets$GO_DENDRITIC_CELL_DIFFERENTIATION
+DC_genes <- DC_genes[DC_genes %in% rownames(mono.obj.all_rename)] # genes in dataset
+seurat <- Seurat::CellCycleScoring(object = mono.obj.all_rename, s.features = Ma_genes, g2m.features = DC_genes, set.ident = TRUE)
+head(seurat[[]])
+
+Seurat::VlnPlot(seurat, features = "S.Score",group.by = "celltype",pt.size=0) 
+Seurat::VlnPlot(seurat, features = "G2M.Score",group.by = "celltype",pt.size=0)
+
+#此处有问题，即VlnPlot的标题不可改
+#解决方案是修改CellCycleScoring函数
+
+
+Ma_DC_score <- function (object, s.features, g2m.features, set.ident = FALSE, 
+          ...) 
+{
+  name <- "Cell.Cycle"
+  features <- list(Macrophage_score = s.features, DC_score = g2m.features) ##在此处修改Macrophage_score和DC_score成为你对应的想要的名字
+  object.cc <- AddModuleScore(object = object, features = features, 
+                              name = name, ctrl = min(vapply(X = features, FUN = length, 
+                                                             FUN.VALUE = numeric(length = 1))), ...)
+  cc.columns <- grep(pattern = name, x = colnames(x = object.cc[[]]), 
+                     value = TRUE)
+  cc.scores <- object.cc[[cc.columns]]
+  rm(object.cc)
+  assignments <- apply(X = cc.scores, MARGIN = 1, FUN = function(scores, 
+                                                                 first = "S", second = "G2M", null = "G1") {
+    if (all(scores < 0)) {
+      return(null)
+    }
+    else {
+      if (length(which(x = scores == max(scores))) > 1) {
+        return("Undecided")
+      }
+      else {
+        return(c(first, second)[which(x = scores == max(scores))])
+      }
+    }
+  })
+  cc.scores <- merge(x = cc.scores, y = data.frame(assignments), 
+                     by = 0)
+  colnames(x = cc.scores) <- c("rownames", "Macrophage_score", "DC_score", 
+                               "Phase")
+  rownames(x = cc.scores) <- cc.scores$rownames
+  cc.scores <- cc.scores[, c("Macrophage_score", "DC_score", "Phase")]
+  object[[colnames(x = cc.scores)]] <- cc.scores
+  if (set.ident) {
+    object[["old.ident"]] <- Idents(object = object)
+    Idents(object = object) <- "Phase"
+  }
+  return(object)
+}
+
+
+seurat <- Ma_DC_score(object = mono.obj.all_rename, s.features = Ma_genes, g2m.features = DC_genes, set.ident = TRUE)
+Seurat::VlnPlot(seurat, features = "Macrophage_score",group.by = "celltype",pt.size=0) 
+Seurat::VlnPlot(seurat, features = "DC_score",group.by = "celltype",pt.size=0)
