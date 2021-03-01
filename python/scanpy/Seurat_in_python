@@ -1,0 +1,81 @@
+import numpy as np
+import pandas as pd
+import scanpy as sc
+import loompy
+import igraph
+
+
+sc.settings.verbosity = 3
+sc.logging.print_versions()
+sc.settings.set_figure_params(dpi=160, frameon=False, figsize=(3, 3), facecolor='white')
+
+adata = sc.read_h5ad("mono.obj.all_rename.h5ad")
+
+#貌似原来的metadata都需要astype一下
+adata.obs.celltype = adata.obs.celltype.astype("category")
+adata.obs.celltype_condition = adata.obs.celltype_condition.astype("category")
+adata.obs.celltype
+new_cluster_names = ["VIM+Mono","SOD2+Mono","MCHII-Mono","CD16+Mono",
+                     "ISG15+Mono","EIF5A+Mono","C1QA+Mono"]
+adata.rename_categories('celltype', new_cluster_names)
+
+#基于seurat data进行轨迹推断
+#https://scanpy.discourse.group/t/starting-from-pre-processed-object-for-paga/125
+#计算neighbour需要现有pca，而seurat数据已经提供
+sc.pp.neighbors(adata, n_neighbors=4, use_rep='X_pca')
+sc.tl.paga(adata, groups='celltype')
+sc.pl.paga(adata, color=['celltype','C1QA'],save=".pdf")
+adata.uns['iroot'] = np.flatnonzero(adata.obs['celltype']  == 'SOD2+Mono')[0]
+sc.tl.draw_graph(adata, init_pos='paga', root='iroot')
+sc.pl.draw_graph(adata, color=['celltype', 'C1QA'], legend_loc='on data',save=".pdf")
+
+###vlnplot和featureplot
+##具体见https://www.jianshu.com/p/f05189e0db3b
+sc.pl.violin(adata, ['MS4A1', 'NKG7', 'PPBP'], groupby='celltype')
+sc.pl.umap(adata, color=['MS4A1', 'NKG7', 'PPBP'])
+sc.pl.stacked_violin(adata, ["C1QA","CD74"], groupby='celltype',
+                         swap_axes=True, dendrogram=True)
+sc.pl.dotplot(adata, ["C1QA","CD74"], groupby='celltype',
+              dendrogram=True, dot_max=0.5, dot_min=0.3, standard_scale="var")
+
+sc.pl.dotplot(adata, ["C1QA","CD74"], groupby='celltype', dendrogram=True,
+                   standard_scale='var', smallest_dot=40, color_map='Blues', figsize=(8,5),
+                   save=".png")
+sc.pl.matrixplot(adata, ["C1QBP","CALR","CD63","LAIR1","CD93","LRP1"], 
+                 groupby='celltype',standard_scale='var',save=".png")
+sc.pl.heatmap(adata,["C1QBP","CALR","CD63","CD93","LAIR1","LRP1"], groupby='celltype')
+cytokine_list = ["TNF","IL1B","IL27","LTB","TNFSF12","TNFSF9",
+                   "CCL1","CXCL16","CCL4","CXCL9","CXCL3","CCL23",
+                   "TIMP1","C1QTNF4"]
+sc.pl.matrixplot(adata, cytokine_list, 
+                 groupby='celltype',standard_scale='var',save=".png")
+
+#差异基因表达
+#ccelltype中，两个组之间进行比较；注意groups加[],但reference不加；但不知道2V3怎么办？？
+#sc.tl.rank_genes_groups本质是在object.uns中添加了叫rank_genes_groups的变量，可以提取此df
+sc.tl.rank_genes_groups(adata, 'celltype', groups=['C1QA+Mono'], reference='CD16+Mono', 
+                        method='t-test')  
+#sc.tl.rank_genes_groups(adata, 'celltype', groups=['C1QA+Mono'],method='t-test') 
+sc.pl.rank_genes_groups(adata, n_genes=30, sharey=False,save=".png")
+sc.pl.rank_genes_groups_violin(adata, groups=['C1QA+Mono'], n_genes=5)
+result = adata.uns['rank_genes_groups']
+groups = result['names'].dtype.names
+res = pd.DataFrame(    {group + '_' + key: result[key][group]    
+                        for group in groups 
+                        for key in ['names', 'pvals','logfoldchanges','pvals_adj','scores']})
+res.to_csv("dif.csv")
+
+##批量操作
+a = list(set(adata.obs.celltype))
+test_2 = []
+for i in a:
+    sc.tl.rank_genes_groups(adata, 'celltype', groups=[i], method='t-test') 
+    result = adata.uns['rank_genes_groups'] 
+    groups = result['names'].dtype.names
+    res = pd.DataFrame(    {key: result[key][group]    
+                        for group in groups 
+                        for key in ['names', 'pvals','logfoldchanges','pvals_adj','scores']})
+    res["cluster"] = i
+    test_2.append(res)
+test_2=pd.concat(test_2)
+test_2.to_csv("cluster_marker.csv")
