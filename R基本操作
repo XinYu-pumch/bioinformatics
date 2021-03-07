@@ -23,7 +23,12 @@ c <- as.data.frame(matrix(data=NA,nrow=100,ncol=100))
 #将稀疏矩阵转化为矩阵（不用导入导出csv了）
 a <- as(sce.integrated4_HC@assays$RNA@counts, "matrix")
 
+#学会使用apply
+a =apply(test,1,mean)  #计算行的平均值
+a =apply(test,2,mean) #计算行的标准差
+
 ##管道操作符https://zhuanlan.zhihu.com/p/22955050?refer=rdatamining
+##  注意 “.” 即指代前面的变量
 filter(flights, month == 1, day == 1) #筛选：且
 filter(flights, month == 1 | month == 2) #筛选：或
 arrange(flights, year, month, day，desc(a)) #依次排序  desc()为倒叙
@@ -31,6 +36,7 @@ select(flights, year, month, day) #选取特定列
 select(flights, year:day) #选取特定列
 distinct(select(flights, origin, dest)) #选取了origin和dest列中不一致的行
 mutate(flights,gain = arr_delay - dep_delay, speed = distance/air_time * 60)  #生成新的列并添加
+a <- test %>% mutate(mean =apply(.,1,mean),sd=apply(.,1,sd),cv=sd/mean)  ##计算均值、标准差、cv
 transmute(flights,gain = arr_delay - dep_delay, gain_per_hour = gain / (air_time / 60)) #只生成新的列
 n(x) #x中行的数量
 n_distinct(x): #x中不重复行的数量
