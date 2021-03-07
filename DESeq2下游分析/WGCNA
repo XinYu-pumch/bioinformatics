@@ -36,11 +36,13 @@ plot(sampleTree, main = "Sample clustering to detect outliers", sub="", xlab="",
 h <- 1.5*10^9  #设置剔除的阈值（根据聚类图来看）
 abline(h = h, col = "red");
 # Determine cluster under the line
-clust = cutreeStatic(sampleTree, cutHeight = h, minSize = 10)
+clust = cutreeStatic(sampleTree, cutHeight = h,minSize = 2)  #minSize指最少x个样本算一类
 table(clust)
-# clust 1 contains the samples we want to keep.
-keepSamples = (clust==1)
+# 选取不为0的
+keepSamples = (clust!=0)
 datExpr = datExpr0[keepSamples, ]
+nGenes = ncol(datExpr)
+nSamples = nrow(datExpr)
 ##
 datExpr <- datExpr0
 nGenes = ncol(datExpr)
