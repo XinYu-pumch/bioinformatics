@@ -35,6 +35,8 @@ arrange(flights, year, month, day，desc(a)) #依次排序  desc()为倒叙
 select(flights, year, month, day) #选取特定列
 select(flights, year:day) #选取特定列
 distinct(select(flights, origin, dest)) #选取了origin和dest列中不一致的行
+a <- test %>% filter(between(row_number(), 1,n()))  #选取第一到最后一行，n()表示最后一行
+
 mutate(flights,gain = arr_delay - dep_delay, speed = distance/air_time * 60)  #生成新的列并添加
 a <- test %>% mutate(mean =apply(.,1,mean),sd=apply(.,1,sd),cv=sd/mean)  ##计算均值、标准差、cv
 transmute(flights,gain = arr_delay - dep_delay, gain_per_hour = gain / (air_time / 60)) #只生成新的列
