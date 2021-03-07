@@ -24,3 +24,11 @@ vim /Users/xubin/.ssh/id_rsa.pub
 
 #simple vm及其安装文件
 https://github.com/mibosshard/SimpleVM/releases/download/20201128/SimpleVM_Ubuntu.zip
+
+
+
+##针对多个不同版本的python，设置不同的引用
+sudo vi ~/.bashrc
+alias python_you_like='/Library/Frameworks/Python.framework/Versions/2.x/bin/python2.x'   #设置对应的路径
+source ~/.bashrc
+python_you_like -m pip install xxx  #做事之前需要python_you_like -m
