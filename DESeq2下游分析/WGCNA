@@ -7,7 +7,15 @@ library("WGCNA")
 raw_data <- read.csv("proteomics/proteomics_wgcna.csv", header = TRUE, sep = ",",quote="\"", dec=".",
                      fill = TRUE,comment.char="",row.names = 1)
 raw_data <- log2(raw_data)##总之用某种方法使得表达量可以标准化，log，fpkm，z-score均可
+raw_data <- raw_data[!is.infinite(rowSums(raw_data)),]
 datExpr0 <- t(raw_data) ##需要转置
+
+#根据情况，也可以选择fpkm or rpkm
+raw_data <- raw_data_raw %>% select(HC1_fpkm:BDV6_fpkm) %>%
+  mutate(mean =apply(.,1,mean),sd=apply(.,1,sd),cv=sd/mean) %>%
+  filter(cv >= 0.05) %>% select(HC1_fpkm:BDV6_fpkm)
+raw_data <- raw_data[rowSums(raw_data==0)==0,]
+
 
 
 ##检验是否有NA
