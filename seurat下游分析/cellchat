@@ -1,3 +1,6 @@
+#OSX可能安装失败，解决方法：1）从https://www.xquartz.org/安装X11
+#2）下载该包，将其中src里面的cellchat.so删除，再重新打包tar.gz（tar -zcvf sqjin-CellChat-1a71992.tar.gz sqjin-CellChat-1a71992）
+
 devtools::install_github("sqjin/CellChat")
 library(CellChat)
 library(ggplot2)
