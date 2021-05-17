@@ -1,0 +1,74 @@
+library(fgsea)
+library(msigdbr)
+#在http://www.informatics.jax.org/vocab/gene_ontology/GO:0032611  根据名称找到exact_source
+
+
+mdb_c5 <- msigdbr(species = "Homo sapiens", category = "C5")
+mdb_GO = mdb_c5 [grep("^GO",mdb_c5 $gs_name),]
+fgsea_sets<- mdb_GO %>% split(x = .$gene_symbol, f = .$gs_name)
+
+view <- mdb_GO %>% filter(gs_exact_source == "GO:0032607")
+
+IL_1b <- unique(mdb_GO %>% filter(gs_exact_source == "GO:0032611") %>% .$gene_symbol)
+IL_6 <- unique(mdb_GO %>% filter(gs_exact_source == "GO:0032635") %>% .$gene_symbol)
+IL_8 <- unique(mdb_GO %>% filter(gs_exact_source == "GO:0032637") %>% .$gene_symbol)
+IL_12 <- unique(mdb_GO %>% filter(gs_exact_source == "GO:0032615") %>% .$gene_symbol)
+IFN_alpha <- unique(mdb_GO %>% filter(gs_exact_source == "GO:0032607") %>% .$gene_symbol)
+TNF_alpha <- unique(mdb_GO %>% filter(gs_exact_source == "GO:0042533") %>% .$gene_symbol)
+TNF_alpha <- unique(mdb_GO %>% filter(gs_exact_source == "GO:1990774") %>% .$gene_symbol)
+
+gene_list <- list(IL_1b,IL_6, IL_8 ,IL_12,IFN_alpha,TNF_alpha)
+names(gene_list) <- c("IL_1b","IL_6", "IL_8" ,"IL_12","IFN_alpha","TNF_alpha")
+
+#此处创建一个新函数，根据seurat自带的细胞周期函数
+get_gene_set_score <- function (object, gene_set_input, gene_set_input_name) 
+{
+  name <- gene_set_input_name
+  features <- list(gene_set_score = gene_set_input) 
+  object.cc <- AddModuleScore(object = object, features = features, 
+                              name = name, ctrl = min(vapply(X = features, FUN = length, 
+                                                             FUN.VALUE = numeric(length = 1))))
+  
+  cc.columns <- grep(pattern = name, x = colnames(x = object.cc[[]]), 
+                     value = TRUE)
+  cc.scores <- object.cc[[cc.columns]]
+  rm(object.cc)
+  colnames(x = cc.scores) <- c(gene_set_input_name)
+  object[[colnames(x = cc.scores)]] <- cc.scores
+  return(object)
+}
+
+
+
+for (i in 1:length(gene_list)){
+  gene_set_input <- gene_list[[i]][gene_list[[i]] %in% rownames(mono.obj.all_rename)]# genes in dataset
+  gene_set_input_name <- names(gene_list)[[i]]
+  seurat <- get_gene_set_score(object = mono.obj.all_rename, 
+                               gene_set_input = gene_set_input, 
+                               gene_set_input_name = gene_set_input_name)
+  p <- Seurat::VlnPlot(seurat, features = names(gene_list)[[i]],
+                  group.by = "celltype",pt.size=0) 
+  png(paste(gene_set_input_name,"png",sep="."))
+  print(p)
+  dev.off()
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
