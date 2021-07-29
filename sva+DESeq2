@@ -29,7 +29,7 @@ ddsFullCountTable <- DESeqDataSetFromMatrix(countData = data,
                                             colData = sample,  
                                             design = ~ batch + condition)
 dds <- DESeq(ddsFullCountTable)
-res <- results(dds)
+res <- results(dds,contrast=c("condition","BD","HC"))
 res <- res[order(res$padj),]
 head(res)
 write.csv(res, "BD serum/DEseq2-DE_genes.csv")
