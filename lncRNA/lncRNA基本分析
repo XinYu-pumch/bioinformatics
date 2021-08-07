@@ -1,0 +1,165 @@
+install.packages("readxl")
+library("readxl")
+library(pheatmap)
+library(dplyr)
+library(tibble)
+library(PCAtools)
+
+while (!is.null(dev.list()))  dev.off()
+
+
+lnc_exp_up <- read_excel("lncRNA/BD_vs_HC(unpaired).xlsx", 
+                   sheet = 1, col_names = TRUE, col_types = NULL, na = "", skip = 75)
+
+lnc_exp_down <- read_excel("lncRNA/BD_vs_HC(unpaired).xlsx", 
+                         sheet = 2, col_names = TRUE, col_types = NULL, na = "", skip = 74)
+
+lnc_exp <- rbind(lnc_exp_up,lnc_exp_down)
+lnc_info <- read_excel("lncRNA/LncRNA Expression Profiling Data.xlsx", 
+                      sheet = 1, col_names = TRUE, col_types = NULL, na = "", skip = 66)
+
+mRNA_info <- read_excel("lncRNA/mRNA Expression Profiling Data.xlsx", 
+                      sheet = 1, col_names = TRUE, col_types = NULL, na = "", skip = 37)
+
+mRNA_exp_up <- read_excel("lncRNA/BD_vs_HC(unpaired).xls", 
+                       sheet = 1, col_names = TRUE, col_types = NULL,skip = 45)
+mRNA_exp_down <- read_excel("lncRNA/BD_vs_HC(unpaired).xls", 
+                          sheet = 2, col_names = TRUE, col_types = NULL,skip = 45)
+mRNA_exp <- rbind(mRNA_exp_up,mRNA_exp_down)
+
+#清洗lncRNA数据
+lncRNA_filter <- lnc_exp %>% 
+  filter(`FDR` <= 0.05 & abs(log(`Fold Change`,2)) >= 1 ) %>% 
+  select(Transcript_ID:Sequence)
+
+lncRNA_filter <- lnc_exp %>% 
+  filter(`P-value` <= 0.05 & abs(log(`Fold Change`,2)) >= 1 ) %>% 
+  select(Transcript_ID:relationship)  ##根据report选这个
+
+lncRNA_filter <- lncRNA_filter[!duplicated(lncRNA_filter$Transcript_ID), ]
+
+#火山图_mRNA
+mRNA_exp_2 <- mRNA_exp
+mRNA_exp_2[which(mRNA_exp_2$`P-value` < 0.05 & mRNA_exp_2$`Fold Change` >= 2 & mRNA_exp_2$Regulation == "up"),'DEGs'] <- 'up'
+mRNA_exp_2[which(mRNA_exp_2$`P-value` < 0.05 & mRNA_exp_2$`Fold Change` >= 2 & mRNA_exp_2$Regulation == "down"),'DEGs'] <- 'down'
+mRNA_exp_2[!(mRNA_exp_2$DEGs %in% c('up', 'down')),'DEGs'] <- 'no_difference'
+mRNA_exp_2[which(mRNA_exp_2$Regulation == "up"),'support'] <- 1
+mRNA_exp_2[which(mRNA_exp_2$Regulation == "down"),'support'] <- -1
+mRNA_exp_2 <- mRNA_exp_2 %>% mutate(log2FC=support * log(`Fold Change`,2),logP=-1*log10(`P-value`))
+                                  
+                                  
+p1 <- ggplot(mRNA_exp_2, aes(x = log2FC, y = logP)) +
+  geom_point(aes(color = DEGs), size = 0.5) +
+  scale_colour_manual(limits = c('up', 'down', 'no_difference'), values = c('red', 'blue', 'gray40'), 
+                      labels = c(paste("Up DEGs:",nrow(mRNA_exp_2 %>% filter(DEGs =="up")),sep=""),
+                                 paste("Down DEGs:",nrow(mRNA_exp_2 %>% filter(DEGs =="down")),sep=""),
+                                 paste("Others",nrow(mRNA_exp_2 %>% filter(DEGs =="no_difference")),sep=""))) +
+  labs(x = 'log2 Fold Change', y = '-log10 p-value') +
+  geom_hline(yintercept = 1.3, color = 'gray', linetype = 2, size = 0.5) + 
+  geom_vline(xintercept = c(-1,1), color = 'gray', linetype = 2, size = 0.5)+
+  theme(legend.title = element_blank(), 
+        legend.key = element_rect(fill = 'transparent'), 
+        legend.background = element_rect(fill = 'transparent'), 
+        legend.position = c(0.85, 0.9))
+p1  
+
+#火山图_lncRNA
+mRNA_exp_2 <- lnc_exp
+mRNA_exp_2[which(mRNA_exp_2$`P-value` < 0.05 & mRNA_exp_2$`Fold Change` >= 2 & mRNA_exp_2$Regulation == "up"),'DEGs'] <- 'up'
+mRNA_exp_2[which(mRNA_exp_2$`P-value` < 0.05 & mRNA_exp_2$`Fold Change` >= 2 & mRNA_exp_2$Regulation == "down"),'DEGs'] <- 'down'
+mRNA_exp_2[!(mRNA_exp_2$DEGs %in% c('up', 'down')),'DEGs'] <- 'no_difference'
+mRNA_exp_2[which(mRNA_exp_2$Regulation == "up"),'support'] <- 1
+mRNA_exp_2[which(mRNA_exp_2$Regulation == "down"),'support'] <- -1
+mRNA_exp_2 <- mRNA_exp_2 %>% mutate(log2FC=support * log(`Fold Change`,2),logP=-1*log10(`P-value`))
+
+
+p1 <- ggplot(mRNA_exp_2, aes(x = log2FC, y = logP)) +
+  geom_point(aes(color = DEGs), size = 0.5) +
+  scale_colour_manual(limits = c('up', 'down', 'no_difference'), values = c('red', 'blue', 'gray40'), 
+                      labels = c(paste("Up lncRNAs:",nrow(mRNA_exp_2 %>% filter(DEGs =="up")),sep=""),
+                                 paste("Down lncRNAs:",nrow(mRNA_exp_2 %>% filter(DEGs =="down")),sep=""),
+                                 paste("Others",nrow(mRNA_exp_2 %>% filter(DEGs =="no_difference")),sep=""))) +
+  labs(x = 'log2 Fold Change', y = '-log10 p-value') +
+  geom_hline(yintercept = 1.3, color = 'gray', linetype = 2, size = 0.5) + 
+  geom_vline(xintercept = c(-1,1), color = 'gray', linetype = 2, size = 0.5)+
+  theme(legend.title = element_blank(), legend.key = element_rect(fill = 'transparent'), 
+        legend.background = element_rect(fill = 'transparent'), 
+        legend.position = c(0.85, 0.9))
+p1 
+
+#热图
+hp_mRNA_raw <- mRNA_exp %>% 
+  filter(`P-value` <= 0.05 & abs(`Fold Change`) >= 2 ) %>% 
+  select(Transcript_ID,`[BD2, BD](normalized)`:`[HC14, HC](normalized)`) %>%
+  column_to_rownames("Transcript_ID")
+
+hp_mRNA_raw <- mRNA_exp  %>% 
+  select(Transcript_ID,`[BD2, BD](normalized)`:`[HC14, HC](normalized)`) %>%
+  column_to_rownames("Transcript_ID")
+
+sample_info <- data.frame(sample=colnames(hp_mRNA_raw),condition=c(rep("BD",6),rep("HC",6))) %>% 
+  column_to_rownames("sample")
+
+pheatmap(na.omit(hp_mRNA_raw), cluster_row=F, scale="row", cluster_cols = T,
+         fontsize_row = 6,
+         annotation_col=sample_info['condition'],
+         color= colorRampPalette(c("navy", "white", "firebrick3"))(102),
+         main = "LPS_induced_Neutrophil")
+
+#PCA
+metadata <- data.frame(row.names = colnames(hp_mRNA_raw))
+p <- PCAtools::pca(hp_mRNA_raw, metadata = metadata, 
+                   removeVar = (nrow(hp_mRNA_raw)-1000)/nrow(hp_mRNA_raw))
+biplot(p)
+
+#antisnse分析，不知如何进行
+a <- mRNA_exp %>% filter(`P-value` <=0.05,`Fold Change` >=2) %>% .$GeneSymbol
+antisense <- lnc_exp %>% 
+  filter(`P-value` <= 0.05, abs(log(`Fold Change`,2)) >= 1,
+         GeneSymbol %in% a,relationship %in% c("natural antisense","exon sense-overlapping","intronic antisense","intron sense-overlapping"))
+
+
+#上下游bp(例如200 kbp),结合相关性
+##a <-"ENST00000562691"
+lnc_mRNA_list <- list()
+for (a in unique(lncRNA_filter$Transcript_ID)){
+  b <- lncRNA_filter %>% filter(Transcript_ID==a)
+  c <- mRNA_exp %>% filter(`P-value` <=0.05,`Fold Change` >=2,
+                           (txStart <=b$txEnd+200000  &txEnd >=b$txStart-200000)) %>%
+    mutate(lncRNA = a)
+  if(nrow(c)==0){
+    c$r <- "none"
+    lnc_mRNA_list[[a]] <- c
+  }else{
+    e <- rbind(lnc_exp %>% filter(Transcript_ID==a) %>%
+                 select(`[BD2, BD](normalized)`:`[HC14, HC](normalized)`),
+               c %>% 
+                 select(`[BD2, BD](normalized)`:`[HC14, HC](normalized)`) )
+    f <- cor(t(e))
+    c$r <- 1
+    for (i in 1:nrow(c)){
+      c[i,"r"] <- f[i+1,1]
+    }
+    lnc_mRNA_list[[a]] <- c
+  }
+}
+lnc_mRNA <- do.call(rbind,lnc_mRNA_list)
+
+##LncSEA分析_相关网站
+#TF分析
+
+#相关性分析&GSEA
+#本质是看和某某lnc相关的mRNA集合，主要参与何种通路
+
+a <- "ENST00000600723"
+b <- lncRNA_filter %>% filter(Transcript_ID==a)
+c <- mRNA_exp %>% mutate(lncRNA = a)
+e <- rbind(lnc_exp %>% filter(Transcript_ID==a) %>%
+               select(`[BD2, BD](normalized)`:`[HC14, HC](normalized)`),
+             c %>% select(`[BD2, BD](normalized)`:`[HC14, HC](normalized)`) )
+f <- cor(t(e))
+c$r <- 1
+for (i in 1:nrow(c)){
+    c[i,"r"] <- f[i+1,1]
+}
+
