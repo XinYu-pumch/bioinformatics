@@ -1,0 +1,22 @@
+#####
+#参考https://gist.github.com/ccwang002/5978498
+#利用InPAS中的as.data.frame(utr3.hg19)包，直接获取symbol和其gene的染色体位置对应关系
+#利用threeUTRsByTranscript函数，直接获取所有基因的3UTR信息
+#然后再merge
+##那么获取cds的原理其实也一样，应该是把threeUTRsByTranscript换成Transcript
+library("org.Hs.eg.db")
+library("annotate")
+library("BSgenome")
+library("BSgenome.Hsapiens.UCSC.hg19") 
+library("plyr")
+library("InPAS")
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+
+
+utr3_info <- as.data.frame(threeUTRsByTranscript(TxDb.Hsapiens.UCSC.hg19.knownGene, use.names=TRUE)) %>% 
+  mutate(transcript=group_name) %>% 
+  merge(as.data.frame(utr3.hg19),.,by="transcript") %>%
+  filter(feature=="utr3") %>% 
+  mutate(sequence=getSeq(Hsapiens, .$seqnames.y, 
+                         start=.$start.y, end=.$end.y, strand=.$strand.y, 
+                         as.character=TRUE))
