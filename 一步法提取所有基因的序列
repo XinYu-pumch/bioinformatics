@@ -12,6 +12,7 @@ library("plyr")
 library("InPAS")
 library(TxDb.Hsapiens.UCSC.hg19.knownGene)
 
+data(utr3.hg19)
 
 utr3_info <- as.data.frame(threeUTRsByTranscript(TxDb.Hsapiens.UCSC.hg19.knownGene, use.names=TRUE)) %>% 
   mutate(transcript=group_name) %>% 
