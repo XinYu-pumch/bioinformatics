@@ -1,0 +1,243 @@
+#lincRNA分析
+##一堆读取，注意：文件名里面的“括号”去掉
+library(dplyr)
+library(ggplot2)
+setwd("/Users/yuxin/Downloads/bioinformatics")
+lnc_exp <- readxl::read_excel("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/Th17/lnc结果/6V6/Report/GeneralData/LncRNA\ Expression\ Profiling/LncRNA\ Expression\ Profiling\ Data.xlsx",
+                               sheet=1,skip=66)
+lnc_dif_up <- readxl::read_excel("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/Th17/lnc结果/6V6/Report/GeneralData/LncRNA\ Expression\ Profiling/All\ Comparison\ LncRNAs/BD_vs_HC_unpaired.xlsx",
+                              sheet=1,skip=75)
+lnc_dif_down <- readxl::read_excel("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/Th17/lnc结果/6V6/Report/GeneralData/LncRNA\ Expression\ Profiling/All\ Comparison\ LncRNAs/BD_vs_HC_unpaired.xlsx",
+                                 sheet=2,skip=74)
+lnc_dif_down$`Fold Change` <- -1*lnc_dif_down$`Fold Change`
+lnc_dif <- rbind(lnc_dif_up,lnc_dif_down)
+mRNA_exp <- readxl::read_excel("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/Th17/lnc结果/6V6/Report/GeneralData/mRNA\ Expression\ Profiling/mRNA\ Expression\ Profiling\ Data.xlsx",
+                               sheet=1,skip=37)
+mRNA_dif_up <- readxl::read_excel("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/Th17/lnc结果/6V6/Report/GeneralData/mRNA\ Expression\ Profiling/All\ Comparison\ mRNAs/BD_vs_HC_unpaired.xls",
+                                  sheet=1,skip=45)
+mRNA_dif_down <- readxl::read_excel("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/Th17/lnc结果/6V6/Report/GeneralData/mRNA\ Expression\ Profiling/All\ Comparison\ mRNAs/BD_vs_HC_unpaired.xls",
+                                  sheet=2,skip=45)
+mRNA_dif_down$`Fold Change` <- -1*mRNA_dif_down$`Fold Change`
+mRNA_dif <- rbind(mRNA_dif_up,mRNA_dif_down)
+
+
+
+#先看ceRNA
+library("org.Hs.eg.db")
+library("annotate")
+library("BSgenome")
+library("BSgenome.Hsapiens.UCSC.hg19") 
+library("plyr")
+library("InPAS")
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+library("Homo.sapiens")
+library("rentrez")
+library("Biostrings")
+library("seqinr")
+library("rtracklayer")
+library("mgsub")
+library("stringi")
+#需要准备lncipidia的几个文件
+#lncipedia_5_2_ensembl_92.txt
+#lncipedia_5_2_hg19.bed
+#lncipedia_5_2_hg19.gff和lncipedia_5_2_hg19.gif
+#lncipedia_5_2_refseq.txt
+#lncipedia_5_2.fasta
+#和所有成熟miRNA的序列文件mature.fa
+
+#根据symbol，获取所有基因组的3UTR序列
+data(utr3.hg19)
+utr3_info <- as.data.frame(threeUTRsByTranscript(TxDb.Hsapiens.UCSC.hg19.knownGene, use.names=TRUE)) %>% 
+  mutate(transcript=group_name) %>% 
+  merge(as.data.frame(utr3.hg19),.,by="transcript") %>%
+  filter(feature=="utr3") %>% 
+  mutate(sequence=getSeq(Hsapiens, .$seqnames.y, 
+                         start=.$start.y, end=.$end.y, strand=.$strand.y, 
+                         as.character=TRUE))
+
+#读取lncipedia提供的序列文件，该文件用symbol索引
+lncipedia_fasta<-seqinr::read.fasta(file = "lncipedia/lncipedia_5_2.fasta", 
+                               seqtype = "DNA",as.string = TRUE) %>% 
+  do.call(rbind,.) %>% as.data.frame(.) %>% 
+  tibble::rownames_to_column("lnc_symbol") %>% mutate(sequence=V1) %>%
+  dplyr::select(lnc_symbol,sequence)
+
+#lncipedia仅提供ENST和RefSeq的ID转化，对于芯片中其他格式名称的lncRNA暂时舍弃
+lncipedia_id <- merge(read.table("lncipedia/lncipedia_5_2_ensembl_92.txt",header = TRUE) %>%
+                        mutate(ensembl=substring(.$ensemblTranscriptID, 1, 15),
+                               rank_1=substring(.$ensemblTranscriptID, 17,last=1000000L)),
+                      read.table("lncipedia/lncipedia_5_2_refseq.txt",header=TRUE) %>% 
+                        mutate(refseq=substring(.$RefSeqID, 1, 9),
+                               rank_2=substring(.$RefSeqID, 11,last=1000000L)),
+                      by="lncipediaTranscriptID",all=TRUE)
+
+##下步仅获取lnc_deg中的“在lncipedia中有ensembl或RefSeqID”的部分
+lnc_deg <- lnc_dif %>% dplyr::distinct(Transcript_ID,.keep_all = TRUE) %>% 
+  filter(`P-value` <=0.05 & abs(`Fold Change`) >=2) %>% 
+  mutate(ensembl=Transcript_ID) %>% 
+  merge(lncipedia_id,.,all=TRUE,
+        by="ensembl") %>%  
+  base::subset(ensemblTranscriptID  !="NA" & Transcript_ID  !="NA") %>%
+  mutate(lnc_symbol =lncipediaTranscriptID) %>% 
+  merge(lncipedia_fasta,., by="lnc_symbol")
+
+
+#根据阈值筛选mRNA；另外根据公共数据库文件添加其3UTR序列
+mRNA_deg <- mRNA_dif %>% filter(`P-value` <=0.05,abs(`Fold Change`) >=1.8) %>%
+  mutate(symbol=GeneSymbol) %>% 
+  merge(utr3_info %>% dplyr::select(symbol,sequence),.,by="symbol") %>%
+  mutate(length=nchar(sequence))
+  
+##支线：对所有mRNA进行GSEA分析
+m_df<- msigdbr::msigdbr(species = "Homo sapiens", category = "C7")#我们使用C7免疫基因集;H是Hallmarker
+fgsea_sets<- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+GSEA_2=data.frame(gene=mRNA_dif$GeneSymbol,logFc=mRNA_dif$`Fold Change`) %>% distinct(gene,.keep_all = TRUE)
+GSEA_2 <- GSEA_2[order(GSEA_2$logFc,decreasing= T),]
+GSEA_2 <- tibble::deframe(GSEA_2)
+fgseaRes<- fgsea(fgsea_sets, stats = GSEA_2, nperm = 1000)
+
+test <- fgseaRes %>% filter(.,grepl("TH17",pathway)) %>%  filter(pval <=0.05)
+#可选一些看起来符合期望的通路
+c <- c("GSE11924_TH1_VS_TH17_CD4_TCELL_DN",
+      "GSE11924_TH1_VS_TH17_CD4_TCELL_UP",
+      "GSE14308_TH1_VS_TH17_DN",
+      "GSE14308_TH17_VS_NAIVE_CD4_TCELL_UP",
+  "GSE43955_TH0_VS_TGFB_IL6_IL23_TH17_ACT_CD4_TCELL_60H_DN"
+      )
+a <- fgseaRes %>% filter(pathway %in% c)
+a$support=-log(a$pval) #定义一个数值  注意pathway接$来引用数值！
+p=ggplot(a,aes(support,pathway))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+p=p+geom_point(aes(size=size,color=NES)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+p=p+labs(color=expression(NES),size="size",x="-log(pvalue)",y="gene_set",
+         title="GSEA Enrichment")  #标签名称
+p=p+theme_bw() #去除灰色背景
+p
+####
+
+#回到主线，利用mature.fa数据库的文件获取所有的人miRNA成熟形式的序列
+#并以前8个核苷酸序列（当然也可以放宽到前7个）的反向互补序列作为“种子序列”
+miRNA <-seqinr::read.fasta(file = "lncipedia/mature.fa", 
+                                    seqtype = "DNA",as.string = TRUE) %>% 
+  do.call(rbind,.) %>% as.data.frame(.) %>% 
+  tibble::rownames_to_column("miRNA") %>% mutate(sequence=V1) %>%
+  dplyr::select(miRNA,sequence) %>% filter(.,grepl("hsa",miRNA)) %>% 
+  mutate(first_8 = substring(.$sequence, 1, 8)) %>% 
+  mutate(seed_sequence= stri_reverse(mgsub(.$first_8,
+                                           c("A","U","G","C","a","g","u","c","N","n"),
+                                           c("T","A","C","G","t","c","a","g","N","n"))))
+
+
+
+####构建ceRNA矩阵,目的是利用相关性以及共有miRNA_seed_sequence来筛选
+#首先需要确定一个gene（比如FOSL1），然后看FOSL1的3UTR包含哪些miRNA的种子序列（说明可能可被这些miRNA调控）
+gene <- "FOSL1" #比如选择FOSL1
+UTR_seq <- mRNA_deg %>% filter(GeneSymbol==gene) %>%
+  .$sequence %>%  .[[1]]
+miRNA_reg <- list()
+for (miR in miRNA$miRNA){
+  seed <- miRNA %>% filter(miRNA == miR) %>% .$seed
+  seed_toupper <- toupper(x=seed)
+  if(grepl(seed_toupper,UTR_seq)) {
+    miRNA_reg[[miR]] <- data.frame(gene=gene,miRNA=miR,seed=seed)
+  }
+}
+miRNA_reg <- do.call(rbind,miRNA_reg)
+
+#完成靶基因和miRNA的对应后，继续完成miRNA和lncRNA的对应（即看lncRNA里有无种子序列）
+lnc_reg <- list()
+for (miR in miRNA_reg$miRNA){
+  seed <- miRNA_reg %>% filter(miRNA == miR) %>% .$seed
+  gene <- miRNA_reg %>% filter(gene == gene) %>% .$gene
+  miR_list <- list()
+  for(lnc in lnc_deg$Transcript_ID){
+    lnc_seq <- lnc_deg %>% filter(Transcript_ID == lnc) %>% .$sequence
+    if(grepl(seed,lnc_seq))
+      miR_list[[lnc]] <- data.frame(gene=gene,miR=miR,lnc=lnc,seed=seed) 
+  }
+  miR_list <- do.call(rbind,miR_list) %>% 
+    distinct(lnc,.keep_all=TRUE)
+  lnc_reg[[miR]] <- miR_list
+}
+lnc_reg <- do.call(rbind,lnc_reg)
+
+#现在初步完成了mRNA-miRNA-lncRNA的对应
+#再添加mRNA和lncRNA的相关性系数，以进一步筛选
+#这里由于矩阵不算大，所以对整个矩阵用cor()函数了，其实浪费了过多算力
+ceRNA <- t(rbind( mRNA_deg %>% filter(GeneSymbol==gene) %>% 
+                dplyr::select(GeneSymbol, `[BD2, BD](normalized)`:`[HC14, HC](normalized)`) %>% 
+                tibble::column_to_rownames("GeneSymbol"),
+              lnc_deg %>% dplyr::select(Transcript_ID,`[BD2, BD](normalized)`:`[HC14, HC](normalized)`) %>% 
+                tibble::column_to_rownames("Transcript_ID"))) %>%
+  cor(.) %>% as.data.frame(.) %>%
+  tibble::rownames_to_column("name") %>% .[,1:2] %>%
+  data.frame(lnc=.$name,r=.[,2]) %>%.[,3:4] %>%
+  merge(lnc_reg,.,by="lnc")
+
+
+a <- lnc_deg %>% filter(.,grepl("01503",GeneSymbol))
+b <- ceRNA %>% filter(lnc =="ENST00000436710")
+
+
+####根据ceRNA找到合适的lncRNA，再利用lncRNA和所有基因的关联性，做一个GSEA分析
+lncRNA  <- "ENST00000436710"
+a <- rbind(lnc_deg %>% filter(Transcript_ID==lncRNA)%>%
+             dplyr::select(Transcript_ID,`[BD2, BD](normalized)`:`[HC14, HC](normalized)`) %>% 
+             tibble::column_to_rownames("Transcript_ID"),
+           mRNA_dif %>% dplyr::select(GeneSymbol, `[BD2, BD](normalized)`:`[HC14, HC](normalized)`) %>% 
+             distinct(GeneSymbol,.keep_all = TRUE)  %>%
+             tibble::column_to_rownames("GeneSymbol")) 
+
+cor_lnc <- list()
+for (row in rownames(a)){
+  b <- a %>% tibble::rownames_to_column("names") %>% filter(names==lncRNA) %>% tibble::column_to_rownames("names")
+  c <- a %>% tibble::rownames_to_column("names") %>% filter(names==row) %>% tibble::column_to_rownames("names")
+  r <- cor(t(b),t(c))
+  cor_lnc[[row]]  <- data.frame(mRNA=row,r=r[,1])
+}
+d <- do.call(rbind,cor_lnc) %>% .[order(.$r,decreasing= T),] 
+
+
+
+a <- as.data.frame(a) %>%
+  tibble::rownames_to_column("name") %>% .[,1:2] %>%
+  data.frame(lnc=.$name,r=.[,2]) %>%.[2:1000000L,3:4] %>%
+  .[order(.$r,decreasing= T),] %>% deframe(.)
+  
+m_df<- msigdbr::msigdbr(species = "Homo sapiens", category = "C7")#我们使用C7免疫基因集;H是Hallmarker
+fgsea_sets<- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+fgseaRes<- fgsea(fgsea_sets, stats = d, nperm = 1000)
+
+b <- fgseaRes %>% filter(.,grepl("TH17",pathway)) %>% 
+  filter(pval<=0.05)
+
+th17_geneset <- c("GSE11924_TH1_VS_TH17_CD4_TCELL_UP",
+"GSE11924_TH2_VS_TH17_CD4_TCELL_DN",
+"GSE14026_TH1_VS_TH17_UP",
+"GSE14026_TH1_VS_TH17_DN",
+"GSE14308_TH1_VS_TH17_UP",
+"GSE14308_TH1_VS_TH17_DN",
+"GSE14308_TH17_VS_NAIVE_CD4_TCELL_UP",
+"GSE14308_TH17_VS_NAIVE_CD4_TCELL_DN",
+"GSE26030_TH1_VS_TH17_DAY15_POST_POLARIZATION_UP",
+"GSE26030_TH1_VS_TH17_DAY15_POST_POLARIZATION_DN",
+"GSE43955_TH0_VS_TGFB_IL6_IL23_TH17_ACT_CD4_TCELL_60H_UP",
+"GSE43955_TH0_VS_TGFB_IL6_IL23_TH17_ACT_CD4_TCELL_60H_DN")
+
+th17_geneset <- c("GSE11924_TH1_VS_TH17_CD4_TCELL_UP",
+                  "GSE11924_TH2_VS_TH17_CD4_TCELL_DN",
+                  "GSE14026_TH1_VS_TH17_UP",
+                  "GSE14026_TH1_VS_TH17_DN",
+                  "GSE14308_TH1_VS_TH17_UP",
+                  "GSE14308_TH1_VS_TH17_DN",
+                  "GSE43955_TH0_VS_TGFB_IL6_IL23_TH17_ACT_CD4_TCELL_60H_UP",
+                  "GSE43955_TH0_VS_TGFB_IL6_IL23_TH17_ACT_CD4_TCELL_60H_DN")
+a <- fgseaRes %>% filter(pathway %in% th17_geneset)
+a$support=-log(a$pval) #定义一个数值  注意pathway接$来引用数值！
+p=ggplot(a,aes(support,pathway))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+p=p+geom_point(aes(size=size,color=NES)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+p=p+labs(color=expression(NES),size="size",x="-log(pvalue)",y="gene_set",
+         title="GSEA Enrichment")  #标签名称
+p=p+theme_bw() #去除灰色背景
+p
