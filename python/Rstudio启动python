@@ -1,0 +1,10 @@
+#R中进入python的指南
+#首先安装，并打开anaconda的环境，比如叫"python_for_R"
+#然后usethis::edit_r_environ()
+#设置RETICULATE_PYTHON="/usr/local/anaconda3/envs/python_for_R/bin/python3"
+#保存，重启RStudio
+#输入Sys.setenv(RETICULATE_PYTHON = "/usr/local/anaconda3/envs/python_for_R/bin/python3")
+#想要安装python包就只能在cmd里面装
+library(reticulate)
+use_condaenv('/usr/local/anaconda3/envs/python_for_R')
+py_config()
