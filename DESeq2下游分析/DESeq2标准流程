@@ -51,6 +51,25 @@ ddsFullCountTable <- DESeqDataSetFromMatrix(countData = data,
 
 
 dds <- DESeq(ddsFullCountTable)
+
+##DESeqDataSetFromMatrix这步没有去除batch，可用svaseq法重新评估，本质是引入了新的方法得到新的缩放因子加入到deseq中
+dat  <- counts(dds, normalized = TRUE)
+idx  <- rowMeans(dat) > 1
+dat  <- dat[idx, ]
+mod  <- model.matrix(as.formula(paste0("~ ", "condition")), colData(dds))
+mod0 <- model.matrix(~ 1, colData(dds))
+svseq <- sva::svaseq(dat, mod, mod0, n.sv = 2)
+dds$SV1 <- svseq$sv[,1]
+dds$SV2 <- svseq$sv[,2]
+design(dds) <- as.formula(paste("~ SV1 + SV2 +", "condition"))
+dds <- DESeq(dds)
+plot_data <- as.data.frame(colData(dds))
+plot_data$Sample <- rownames(plot_data)
+head(plot_data)
+ggplot(plot_data, aes(x=SV1, y=SV2, color=condition, shape=batch)) +
+  geom_point() + ggrepel::geom_text_repel(aes(label=Sample)) ##用此看SV是不是和batch一致
+###
+
 res <- as.data.frame(results(dds))
 data <- cbind(raw_data_mRNA,res)
 
