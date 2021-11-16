@@ -46,7 +46,7 @@ sample$condition <- factor(sample$condition,levels = c("nc","miR_122_5p"))
 
 ddsFullCountTable <- DESeqDataSetFromMatrix(countData = data,
                                             colData = sample,  
-                                            design = ~ condition)#可在此处添加batch列
+                                            design = ~ batch+condition)#可在此处添加batch列,但注意condition在最后！！
 
 
 
