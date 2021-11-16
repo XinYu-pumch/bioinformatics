@@ -95,7 +95,7 @@ res_padj <- res[order(res$padj), ]
 rlogMat2 <- rlogMat[match(rownames(res_padj), rownames(rlogMat)),, drop=F]
 raw_data2 <- raw_data[match(rownames(res_padj), raw_data$gene_id),, drop=F]
 rownames(rlogMat2)<-raw_data2$gene_name
-pheatmap(rlogMat2[1:100,], cluster_row=T, scale="row", 
+pheatmap(na.omit(rlogMat2), cluster_row=T, scale="row", 
          annotation_col=sample['condition'],
          fontsize_row = 6)
 
