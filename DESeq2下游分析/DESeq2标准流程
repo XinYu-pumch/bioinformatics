@@ -1,0 +1,456 @@
+library(org.Hs.eg.db)
+library("clusterProfiler")
+library("DOSE")
+library(ggplot2)
+library(tidyr)
+library(DESeq2)
+library(pheatmap)
+library(Hmisc)
+if (!requireNamespace("pathview", quietly=TRUE))  BiocManager::install("pathview")
+library("pathview")
+library("org.Hs.eg.db")
+library("annotate")
+library("BSgenome")
+library("BSgenome.Hsapiens.UCSC.hg19") 
+library("plyr")
+library("InPAS")
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+while (!is.null(dev.list()))  dev.off()
+
+##miR_122的结果
+raw_data <- readxl::read_excel("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/RNA-seq/2021_10_17_miR122/all_compare.xlsx",sheet=1)
+#raw_data_mRNA <- raw_data 
+raw_data_mRNA <- raw_data %>% filter(gene_biotype=="protein_coding")
+
+#考虑剔除一对
+data <- data.frame(nc2=raw_data_mRNA$nc_02_count,
+                   nc3=raw_data_mRNA$nc_03_count,
+                   nc4=raw_data_mRNA$nc_04_count,
+                   nc5=raw_data_mRNA$nc_05_count,
+                   nc6=raw_data_mRNA$nc_06_count,
+                   miR_122_5p_2=raw_data_mRNA$miR_122_02_count,
+                   miR_122_5p_3=raw_data_mRNA$miR_122_03_count,
+                   miR_122_5p_4=raw_data_mRNA$miR_122_04_count,
+                   miR_122_5p_5=raw_data_mRNA$miR_122_05_count,
+                   miR_122_5p_6=raw_data_mRNA$miR_122_06_count)
+rownames(data)<-raw_data_mRNA$gene_id
+sample <- data.frame(condition=c(rep("nc",5),rep("miR_122_5p",5)))
+######
+
+
+rownames(sample)<-colnames(data)
+sample <- sample[match(colnames(data), rownames(sample)),, drop=F]
+sample_rowname <- rownames(sample)
+sample$condition <- factor(sample$condition,levels = c("nc","miR_122_5p"))
+
+
+ddsFullCountTable <- DESeqDataSetFromMatrix(countData = data,
+                                            colData = sample,  
+                                            design = ~ condition)#可在此处添加batch列
+
+
+
+dds <- DESeq(ddsFullCountTable)
+res <- as.data.frame(results(dds))
+data <- cbind(raw_data_mRNA,res)
+
+
+raw_data$id <- raw_data$gene_id
+res$id <- rownames(res)
+res_combined <- merge(res,raw_data, by="id")
+
+write.csv(data,"processed_data.csv")
+
+##
+nrow(data %>% filter(padj<=0.05 & log2FoldChange>=0))
+View(data %>% filter(padj<=0.05 & log2FoldChange>=0))
+a <- res_combined %>%  
+  filter(id == "ENSG00000232810"|
+           id =="ENSG00000149925")
+##
+
+#rlog化，基于rlog画样本间距离、热图、pca
+rld <- rlog(dds, blind=TRUE)
+rlogMat <- assay(rld)
+rlogMat <- rlogMat[which(rowSums(rlogMat==0)==0),]
+
+#可引入sva矫正批次效应
+modcombat = model.matrix(~1, data = sample)
+batch = sample$batch
+rlogMat = sva::ComBat(dat=as.matrix(rlogMat), 
+                 batch=batch, 
+                 mod=modcombat, 
+                 par.prior=TRUE, prior.plots=TRUE)
+####
+
+#PCA,选取前2000个标准擦汗最大的gene
+metadata <- data.frame(row.names = colnames(rlogMat))
+while (!is.null(dev.list()))  dev.off()
+p <- PCAtools::pca(rlogMat, metadata = metadata, removeVar = (1-2000/nrow(rlogMat)))
+PCAtools::biplot(p)
+
+####热图
+
+res_padj <- res[order(res$padj), ]
+rlogMat2 <- rlogMat[match(rownames(res_padj), rownames(rlogMat)),, drop=F]
+raw_data2 <- raw_data[match(rownames(res_padj), raw_data$gene_id),, drop=F]
+rownames(rlogMat2)<-raw_data2$gene_name
+pheatmap(rlogMat2[1:100,], cluster_row=T, scale="row", 
+         annotation_col=sample['condition'],
+         fontsize_row = 6)
+
+##火山图
+c <- res
+c[which(c$padj < 0.001 & c$log2FoldChange <= -0.5),'DEGs'] <- 'down'
+c[which(c$padj < 0.001 & c$log2FoldChange >= 0.5),'DEGs'] <- 'up'
+c[!(c$DEGs %in% c('up', 'down')),'DEGs'] <- 'no'
+
+nrow(c[which(c$DEGs == 'up'), ])
+nrow(c[which(c$DEGs == 'down'), ])
+
+p1 <- ggplot(c, aes(x = log2FoldChange, y = -1*log10(pvalue))) +
+  geom_point(aes(color = DEGs), size = 2) +
+  scale_colour_manual(limits = c('up', 'down', 'no'), values = c('red', 'blue', 'gray40'), 
+                      labels = c( paste("Up DEGs:",nrow(c[which(c$DEGs == 'up'), ]),sep=""), 
+                                  paste("Down DEGs:",nrow(c[which(c$DEGs == 'down'), ]),sep=""),
+                                 'Others')) +
+  labs(x = 'log2 Fold Change', y = '-log10 p-value') +
+  geom_hline(yintercept = 2, color = 'gray', linetype = 2, size = 0.5) + 
+  geom_vline(xintercept = c(-2,2), color = 'gray', linetype = 2, size = 0.5)+
+  theme(legend.title = element_blank(), legend.key = element_rect(fill = 'transparent'), legend.background = element_rect(fill = 'transparent'))
+p1
+
+
+###GO和KEGG分析
+ENTREZID <- bitr(res %>% filter(padj<=0.05 & log2FoldChange <=-1) %>% rownames(.),
+                 fromType = "ENSEMBL",
+                 toType = c("ENTREZID"),
+                 OrgDb = org.Hs.eg.db)
+ENTREZID <- ENTREZID$ENTREZID
+head(ENTREZID)
+#BP
+BP <- enrichGO(ENTREZID, "org.Hs.eg.db", ont = "BP",
+               pAdjustMethod = "BH", pvalueCutoff  = 0.05,
+               qvalueCutoff  = 0.05, readable=T)
+#对结果精简
+#此处的cutoff，指的不是GO的矫正p，而是不同term之间的相似程度；默认0.7即可
+result <- simplify(BP, cutoff=0.7, by="p.adjust", select_fun=min)
+#继续精简，选取p.adj<=0.05的前20个
+GO <- result@result  %>% .[order(.$p.adjust),] %>%
+  filter(p.adjust <= 0.05) %>% 
+  .[1:20,]
+
+#画图
+png("BP.png",600,300)
+GO$a=-log(GO$p.adjust) #定义一个数值  注意pathway接$来引用数值！
+p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+p=p+geom_point(aes(size=Count,color=a)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="GO Term",
+         title="Statisics of GO Enrichment: BP")  #标签名称
+p=p+theme_bw() #去除灰色背景
+p
+while (!is.null(dev.list()))  dev.off()
+
+kk <- enrichKEGG(ENTREZID, organism="hsa", pvalueCutoff=0.05, pAdjustMethod="BH", 
+                 qvalueCutoff=0.05)
+GO <- kk@result
+GO <- GO[order(GO$p.adjust),]
+GO <- GO[which(GO$p.adjust <= 0.05), ]
+GO <- GO[1:20,]
+GO <-na.omit(GO)
+png("KEGG.png",1200,400)
+GO$a=-log(GO$p.adjust) #定义一个数值  注意pathway接$来引用数值！
+p=ggplot(GO,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+p=p+geom_point(aes(size=Count,color=a)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+p=p+labs(color=expression(-log10(Padj)),size="Gene number",x="Rich Factor",y="KEGG Term",
+         title="Statisics of KEGG Enrichment")  #标签名称
+p=p+theme_bw() #去除灰色背景
+p
+while (!is.null(dev.list()))  dev.off()
+
+
+##GSEA
+res_GSEA <- res[order(res$log2FoldChange),]
+ENTREZID_GSEA <- bitr(rownames(res_GSEA), fromType = "ENSEMBL",
+                      toType = c("ENTREZID"),
+                      OrgDb = org.Hs.eg.db)
+res_GSEA$ENSEMBL <- rownames(res_GSEA)
+res_GSEA <- merge(res_GSEA,ENTREZID_GSEA, by="ENSEMBL")
+res_GSEA <- na.omit(res_GSEA)
+res_GSEA <- res_GSEA[order(res_GSEA$log2FoldChange,decreasing= T),]
+genelist <- res_GSEA$log2FoldChange
+names(genelist) <- res_GSEA$ENTREZID
+kk_GSEA <- gseKEGG(geneList     = genelist,
+                   organism     = 'hsa',
+                   nPerm        = 1000,
+                   minGSSize    = 10,
+                   maxGSSize = 500,
+                   pvalueCutoff = 1,
+                   verbose      = FALSE)
+View(kk_GSEA@result)
+kk_GSEA_plot <- kk_GSEA@result %>% filter(abs(NES)>=1 & pvalue<0.05 & p.adjust<=0.25) %>%
+  filter(ID =="hsa04621"|
+           ID == "hsa04062"|
+           ID == "hsa04630"|
+           ID == "hsa04668"|
+           ID == "hsa04620"|
+           ID == "hsa04622"|
+           ID == "hsa04612"|
+           ID == "hsa04623"|
+           ID == "hsa04064"|
+           ID == "hsa04062"|
+           ID == "hsa00190")
+kk_GSEA_plot$a=-log(kk_GSEA_plot$p.adjust) #定义一个数值  注意pathway接$来引用数值！
+p=ggplot(kk_GSEA_plot,aes(a,Description))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+p=p+geom_point(aes(size=setSize,color=NES)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+p=p+labs(color=expression(NES),size="setSize",x="Rich Factor",y="KEGG Term",
+         title="GSEA of KEGG pathway")  #标签名称
+p=p+theme_bw() #去除灰色背景
+p
+
+##展示特定的KEGG图
+a <- res_combined %>% filter(padj<=0.05 & gene_biotype=="protein_coding") %>%
+  .$gene_name %>%
+  bitr(., fromType = "SYMBOL",
+       toType = c("ENTREZID"),
+       OrgDb = org.Hs.eg.db,
+       drop=TRUE) %>% 
+  mutate(gene_name=.$SYMBOL) %>% 
+  merge(.,res_combined, by="gene_name") %>%
+  select(ENTREZID,log2FoldChange) %>% 
+  dplyr::distinct(ENTREZID, .keep_all = TRUE) %>%
+  tibble::column_to_rownames(.,"ENTREZID") ###此处distinct函数貌似是遇到重复值仅保留第一个
+
+p <- pathview(gene.data = a, pathway.id = "04064", species = "hsa",
+              out.suffix = "pathview", kegg.native = T,
+              kegg.dir="/Users/yuxin/Downloads/bioinformatics",
+              low = list(gene = "blue", cpd = "blue"), 
+              mid =list(gene = "gray", cpd = "gray"), 
+              high = list(gene = "red", cpd ="red"))
+##KEGG_id:04620_TLR4, 00010_glycolysis,00020_citrate_cycle, 00030_PPP, 00900_mevalonate
+#00071_FA降解,00061_FA合成，04630_JAK
+
+
+
+###具体基因展示
+for (main in kk_GSEA_plot$Description){
+  dir <- paste(main,"pdf",sep=".")
+  gene <- strsplit(kk_GSEA@result %>% filter(Description ==main) %>%
+                     .$core_enrichment, '/', fixed=TRUE) %>% 
+    .[[1]] %>%
+    bitr(., fromType = "ENTREZID",
+         toType = c("SYMBOL"),
+         OrgDb = org.Hs.eg.db)
+  jpeg(file=dir,width=1200,height=600)
+  p <- pheatmap(na.omit(rlogMat2[match(gene$SYMBOL, 
+                                       rownames(rlogMat2)),, drop=F]), cluster_row=T, scale="row", 
+                annotation_col=sample['condition'],
+                fontsize_row = 6,
+                main= main)
+  while (!is.null(dev.list()))  dev.off()
+  save_pheatmap_pdf <- function(x, filename, width=7, height=7) {
+    stopifnot(!missing(x))
+    stopifnot(!missing(filename))
+    pdf(filename, width=width, height=height)
+    grid::grid.newpage()
+    grid::grid.draw(x$gtable)
+    dev.off()
+  }
+  save_pheatmap_pdf(p, dir)
+}
+
+  
+  
+  
+  
+  
+  
+  
+  
+
+######
+GO <- read.table(file.choose())
+GO <- readxl::read_excel(file.choose(),sheet=1,na=NA,col_names = TRUE, col_types=NULL,
+                         skip=0)
+GO <- readxl::read_excel(file.choose(),sheet=1)
+GO <- GO %>% filter(`FDR q-val`<=0.25 & `NOM p-val` <=0.05) 
+GO$a=-log(GO$`FDR q-val`+1) #定义一个数值  注意pathway接$来引用数值！
+p=ggplot(GO,aes(a,NAME))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+p=p+geom_point(aes(size=SIZE,color=NES)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+p=p+labs(color=expression(-log10(Padj+1)),size="Gene number",x="Rich Factor",y="GO Term",
+         title="Statisics of GSEA Enrichment")  #标签名称
+p=p+theme_bw() #去除灰色背景
+p
+while (!is.null(dev.list()))  dev.off()
+
+###转录因子分析
+unique(res_combined$gene_biotype)
+TF <- res_combined %>% filter(tf_family !="-") %>% filter(padj <=0.05 &
+                                                            abs(log2FoldChange)>=1)
+
+##随意查询
+glycogen_gene <- c("P2RY14","PGM1","UGP2","GYS1","PYGL","G6PD","PTPN2","PCK1","FBP1",
+                   "SLC2A1","SLC2A2","PYGM","G6PD","PGD")
+glycolysis_enzyme <-c("GCK","HK1","HK2","HK3","HK4","GPI","PFKFB2",
+                      "PFKM","ALDOA","TPI1","GAPDH","PGK1","PGAM1","PGAM2",
+                      "ENO1","ENO2","ENO3","PKM","PKLR",
+                      "LDHA","FBP2","ALDOB","ALDOC","G6PD","PGD","PC","PCK1","FBP1",
+                      "GND1","TKL1","TAL1")
+glycogen_synthesis <- c("NUDT14","UGP1","UGP2","GYS1","GYS2","GBE1","PYGL","PYGM","PYGB")
+cholesterol <- c("ACAT1","ACAT2","HMGCS1","HMGCS2","HMGCR","MVK","PMVK",
+                 "MVD","IDI1","IDI2","FPPS","FDPS","FDFT1","LSS","SQLE","GGPS1")
+Krebs_cycle <- c("DLAT","DAD","PDHA1","PDHB","PDHX",
+                 "CS","ACO1","ACO2",
+                 "IDH1","IDH2","OGDH","SUCLA2",
+                 "SDHA","SDHB","SDHC","SDHD",
+                 "FH","MDH1","MDH2","ACOD1","PDK1")
+FA <- c("ACLY","ME1","ME2","ME3","FASN")
+a <- res_combined %>% filter(.,grepl("IFNB",gene_name) & gene_biotype=="protein_coding") %>% 
+  tibble::column_to_rownames(.,"gene_name")
+
+a <- res_combined %>% filter(gene_name %in% FA & gene_biotype=="protein_coding") %>% 
+  tibble::column_to_rownames(.,"gene_name")
+
+a <- res_combined %>% filter(.,grepl("itacon",gene_description)) 
+  filter(padj <=0.05 & log2FoldChange<=0)
+
+a <- res_combined %>% filter(padj<=0.05 & 
+                                 gene_biotype=="protein_coding" &
+                                 abs(log2FoldChange)>=0.5)
+TF <- res_combined %>% filter(tf_family!="-" & log2FoldChange <=-1 & padj<=0.05) %>%
+  tibble::column_to_rownames(.,"gene_name")
+
+##指定gsea
+library(fgsea)
+library(tibble)
+m_df<- msigdbr::msigdbr(species = "Homo sapiens")
+fgsea_sets<- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+test <- m_df %>% filter(gs_exact_source == "GO:0019321") %>% .$gene_symbol  #GOBP_PENTOSE_METABOLIC_PROCESS
+test <- m_df %>% filter(gs_name == "HALLMARK_GLYCOLYSIS") %>% .$gene_symbol  #GOBP_PENTOSE_METABOLIC_PROCESS
+test <- m_df %>% filter(gs_name == "KEGG_GLYCOLYSIS_GLUCONEOGENESIS") %>% .$gene_symbol  #GOBP_PENTOSE_METABOLIC_PROCESS
+test <- m_df %>% filter(gs_exact_source == "GO:0019642") %>% .$gene_symbol  #糖酵解
+test <- m_df %>% filter(gs_exact_source == "GSE5099_3808_200_DN") %>% .$gene_symbol
+
+GSE5099_3808_200_UP
+
+a <- res_combined %>% filter(gene_name %in% test)
+a <- res_combined %>% filter(gene_name %in% test) %>% 
+  tibble::column_to_rownames(.,"gene_name")
+
+a[which(a$padj < 0.05 & a$log2FoldChange <= -0.01),'DEGs'] <- 'yellow'
+a[which(a$padj < 0.05 & a$log2FoldChange >= 0.01),'DEGs'] <- 'red'
+a[!(a$DEGs %in% c('yellow', 'red')),'DEGs'] <- 'no'
+c <- bitr(a$gene_name, fromType = "SYMBOL",
+          toType = c("ENTREZID"),
+          OrgDb = org.Hs.eg.db)
+KEGG_plot <- a %>% filter(gene_name %in% c$SYMBOL) %>% mutate(ENTREZID = c$ENTREZID) %>%
+  select(ENTREZID,DEGs) %>% filter(DEGs !="no")
+writexl::write_xlsx(list(mysheet1=KEGG_plot),path = 'HALLMARK_GLYCOLYSIS.xlsx')
+
+##GSEA_C7
+m_df<- msigdbr::msigdbr(species = "Homo sapiens", category = "C7")#我们使用C7免疫基因集;H是Hallmarker
+fgsea_sets<- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+
+SYMBOL_GSEA <- bitr(res_combined$id, fromType = "ENSEMBL",
+                    toType = c("SYMBOL"),
+                    OrgDb = org.Hs.eg.db)
+
+GSEA_2=data.frame(gene=res_combined$id,logFc=res$log2FoldChange)
+GSEA_2 <- GSEA_2[match(SYMBOL_GSEA$ENSEMBL,GSEA_2$gene),,drop=F]
+GSEA_2$gene <-SYMBOL_GSEA$SYMBOL
+GSEA_2 <- na.omit(GSEA_2[order(GSEA_2$logFc,decreasing= T),])
+GSEA_2 <- deframe(GSEA_2)
+fgseaRes<- fgsea(fgsea_sets, stats = GSEA_2, nperm = 1000)
+GSEA_result_2 <- fgseaRes[which(abs(fgseaRes$NES)>=1 &
+                                  fgseaRes$pval<=0.05),]
+
+C7 <- rbind(fgseaRes %>% filter(.,grepl("MACRO",pathway)) %>% 
+  filter(pval<=0.05) %>% filter(.,grepl("GSE1925_CTRL",pathway)),fgseaRes %>% filter(.,grepl("MACRO",pathway)) %>% 
+    filter(pval<=0.05) %>% filter(.,grepl("GSE411_",pathway)))
+C5 <- fgseaRes %>% filter(.,grepl("META",pathway)) %>% filter(abs(NES)>=1 &pval<=0.05) 
+C2 <- fgseaRes %>% filter(.,grepl("KEGG",pathway)) %>% filter(abs(NES)>=1 &pval<=0.05) 
+C <- rbind(C5,C2) %>% rbind(.,C7)
+
+a<-C
+a$support=-log(a$pval) #定义一个数值  注意pathway接$来引用数值！
+p=ggplot(a,aes(support,pathway))  #以富集因子和pathway名称为X轴和Y轴；Term是引用文件里面的变量
+p=p+geom_point(aes(size=size,color=NES)) + theme(axis.text.y = element_text(size = 100))  #点图大小和颜色数据
+p=p+scale_colour_gradient(low="green",high="red")  #颜色变化
+p=p+labs(color=expression(NES),size="size",x="-log(pvalue)",y="gene_set",
+         title="GSEA Enrichment")  #标签名称
+p=p+theme_bw() #去除灰色背景
+p
+
+
+
+
+
+##miR_122下游
+down <- res_combined %>% filter(padj<=0.05 & 
+                                  gene_biotype=="protein_coding" &
+                                  log2FoldChange<=-0.5)
+
+Target_scan <- readxl::read_excel(file.choose(),sheet=1)
+Target_scan_pre <- down %>% filter(gene_name %in% Target_scan$`Target gene`) %>% 
+  mutate(`Target gene`=.$gene_name) %>% 
+  merge(Target_scan, ., by="Target gene") 
+
+mirwalk <- read.csv(file.choose())
+mirwalk_pre <- down %>% filter(gene_name %in% mirwalk$genesymbol) %>% 
+  mutate(genesymbol=.$gene_name) %>% 
+  merge(mirwalk, ., by="genesymbol")  %>% 
+  dplyr::distinct(genesymbol, .keep_all = TRUE) 
+
+multimir_validated <- multiMiR::get_multimir(mirna = 'MIMAT0000421', summary = TRUE) %>% .@data
+
+
+multimir_pre <- multiMiR::get_multimir(mirna = "MIMAT0000421",table = "predicted",summary = TRUE,
+                                       use.tibble = TRUE) %>% .@data
+
+
+##继续找用luciferase验证过的靶基因
+validated_target_luciferase <- validated_target@data[grep("Luciferase", validated_target@data[, "experiment"]), ]
+
+#multimir的预测囊括了diana_microt、elmmo、microcosm、miranda、mirdb、pictar、pita、targetscan
+multimir_pre_pre <- down %>% filter(gene_name %in% multimir_pre$target_symbol) %>% 
+  mutate(target_symbol=.$gene_name) %>% 
+  merge(multimir_pre, ., by="target_symbol")  %>% 
+  dplyr::distinct(target_symbol, .keep_all = TRUE) 
+
+length(unique(multimir_pre$target_symbol))
+a <- multimir_validated %>% filter(.,grepl("IRF",target_symbol))
+
+utr3_info <- as.data.frame(threeUTRsByTranscript(TxDb.Hsapiens.UCSC.hg19.knownGene, use.names=TRUE)) %>% 
+  mutate(transcript=group_name) %>% 
+  merge(as.data.frame(utr3.hg19),.,by="transcript") %>%
+  filter(feature=="utr3") %>% 
+  mutate(sequence=getSeq(Hsapiens, .$seqnames.y, 
+                         start=.$start.y, end=.$end.y, strand=.$strand.y, 
+                         as.character=TRUE))
+a <- utr3_info %>% filter(.,grepl("TLR4",symbol)) 
+
+acactcca_gene <- utr3_info %>% filter(.,grepl("ACACTCC",sequence)) %>% 
+  mutate(gene_name=symbol) %>%
+  filter(gene_name %in% down$gene_name) %>%
+  merge(down,.,by="gene_name") %>%
+  dplyr::distinct(gene_name, .keep_all = TRUE) %>% 
+  select(gene_name:padj,gene_description,tf_family)
+
+acactcca_gene[which(acactcca_gene$gene_name %in% multimir_pre_pre$target_symbol),'type'] <- 'validated'
+acactcca_gene[which(acactcca_gene$gene_name %nin% multimir_pre_pre$target_symbol),'type'] <- 'sequence_predicted'
+acactcca_gene[which(acactcca_gene$gene_name %in% mirwalk_pre$genesymbol),'mirwalk'] <- 'predicted'
+acactcca_gene[which(acactcca_gene$gene_name %in% Target_scan_pre$`Target gene`),'Target_scan'] <- 'predicted'
+
+writexl::write_xlsx(list(mysheet1=acactcca_gene),path = 'acactcca_gene.xlsx')
+
+
+p <- pheatmap(na.omit(rlogMat2[match(a$gene_name, 
+                                     rownames(rlogMat2)),, drop=F]), cluster_row=T, scale="row", 
+              annotation_col=sample['condition'],
+              fontsize_row = 6,
+              main= "predicted_downstream_genes")
+save_pheatmap_pdf(p, "test.pdf")
