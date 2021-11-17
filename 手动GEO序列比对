@@ -1,0 +1,43 @@
+
+###自己进行序列比对！
+#参考http://www.sci666.net/64096.html
+
+
+GSE70403 <- getGEO("GSE70403", GSEMatrix =TRUE, AnnotGPL=TRUE)
+GSE70403_matrix <- as.data.frame(exprs(GSE70403$GSE70403_series_matrix.txt.gz))
+index_GSE70403 = GSE70403$GSE70403_series_matrix.txt.gz@annotation
+index_GSE70403
+#自己下载对应的soft，如index_GSE70403对应的是GPL4133.soft
+#貌似下载那个table也可
+gpl_GSE70403 <- data.table::fread("GPL4133.soft",skip = "!platform_table_begin",data.table = F)
+gpl <- gpl_GSE70403 %>% dplyr::select(ID,SEQUENCE) %>% filter(nchar(SEQUENCE)!=0)
+gp <- paste0('>',gpl$ID,'\n',gpl$SEQUENCE)
+write.table(gp,'GPL.fasta',quote = F,row.names = F,col.names = F)
+#将GPL4133.soft里面的sequence和id输出GPL.fasta文件
+#将GPL.fasta、seqmap和下载来的gencode.v38.transcripts.fa放在同一个文件夹
+#打开cmd，运行：
+# ./seqmap 0 ./GPL.fasta ./gencode.v38.transcripts.fa seqmap_results.txt /output_all_matches
+
+probe2ID <- data.table::fread("seqmap_results.txt",data.table = F) %>%
+  tidyr::separate(trans_id,into = c("Ensembl",
+                                    "drop1","drop2","drop3",
+                                    "trans_Symble","gene_Symble","drop4","trans_biotype"),sep = "\\|") %>% 
+  tidyr::separate(drop1,into =c("Ensembl_gene_id","Ensembl_gene_id_rank"),sep="\\.") %>% 
+  dplyr::select(probe_id,Ensembl,Ensembl_gene_id,trans_Symble,gene_Symble,trans_biotype)
+exprSet <- cbind(probe_id = rownames(GSE70403_matrix),GSE70403_matrix) # 第1列叫probe_id
+exprSet$probe_id <- as.integer(exprSet$probe_id)
+
+
+GSE70403_matrix <- exprSet %>%
+  inner_join(probe2ID,.,by="probe_id") %>%
+  dplyr::select(-probe_id) %>%
+  dplyr::select(Ensembl_gene_id,everything()) %>%
+  mutate(rowMean = apply(.[,-c(1,2,3,4,5)], 1, mean,na.rm=T)) %>%
+  arrange(desc(rowMean)) %>%
+  distinct(Ensembl_gene_id,.keep_all = T) %>%
+  dplyr::select(-rowMean)
+
+a <- GSE70403_matrix %>% filter(trans_biotype=="lncRNA")
+a <- GSE70403_matrix %>% filter(gene_Symble=="PCDH18")
+
+
