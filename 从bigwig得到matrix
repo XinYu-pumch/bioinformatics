@@ -1,0 +1,60 @@
+library('derfinderData')
+
+filelist <- list.files("GSE165254_RAW/bigwig")  
+files <- paste("GSE165254_RAW/bigwig",filelist,sep="/")
+files
+
+chr_all <- c(paste0("chr",1:22),"chrX","chrY")
+for(chr in chr_all){
+  library('TxDb.Hsapiens.UCSC.hg19.knownGene')
+  txdb <- keepSeqlevels(TxDb.Hsapiens.UCSC.hg19.knownGene, chr)
+  
+  ## Subset set of genes if you are not using all of them
+  ex <- transcriptsBy(txdb, by = 'gene')
+  
+  bw <- BigWigFileList(files)
+  
+  exons <- unlist(ex)
+  counts_exons <- matrix(NA, nrow = length(exons), ncol = length(bw))
+  colnames(counts_exons) <- names(bw)
+  for(i in seq_len(length(bw))) {
+    coverage <- import(bw[[i]], as = 'RleList')[chr]
+    counts_exons[, i] <- sum(Views(coverage[[1]], ranges(exons)))
+  }
+  
+  
+  ## Divide by read length and round to integer numbers
+  counts_exons <- round(counts_exons / 100, 0)
+  a <- as.data.frame(counts_exons) %>% mutate(seqnames=names(exons),start=as.data.frame(exons@ranges)$start,
+                                              end=as.data.frame(exons@ranges)$end,chr=chr,strand=exons@strand)
+  
+  detach("package:TxDb.Hsapiens.UCSC.hg19.knownGene", unload = TRUE)
+  library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+  write.csv(a,paste("GSE165254_transcript",paste(chr,"csv",sep="."),sep="/"))
+}
+
+hg38_fa <-seqinr::read.fasta(file = "gencode.v38.transcripts.fa", 
+                                    seqtype = "DNA",as.string = TRUE)
+
+detach("package:TxDb.Hsapiens.UCSC.hg19.knownGene", unload = TRUE)
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+library("org.Hs.eg.db")
+library("annotate")
+library("BSgenome")
+library("BSgenome.Hsapiens.UCSC.hg19") 
+library("plyr")
+library("InPAS")
+
+exons@strand
+
+
+a <- read.csv("GSE165254_transcript/chr1.csv") 
+
+
+######
+my_mart<- biomaRt::useMart("ENSEMBL_MART_ENSEMBL")
+human_dataset<- biomaRt::useDataset("hsapiens_gene_ensembl",mart = my_mart) 
+b <- as.data.frame(threeUTRsByTranscript(TxDb.Hsapiens.UCSC.hg19.knownGene, use.names=TRUE))
+
+
+
