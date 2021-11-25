@@ -1,0 +1,73 @@
+
+library('derfinderData')
+files <- list.files(path = "GSE165254_RAW/bigwig",full.names = T,pattern = ".bigWig") #提取文件夹里所有的bigwig文件路径
+
+chr_list <- c(paste("chr",1:21,sep=""),"chrX","chrY")
+
+#参考http://jtleek.com/protocols/bigwig_gene_counts/
+#GEO来自https://www-ncbi-nlm-nih-gov.ezproxy.u-pec.fr/geo/query/acc.cgi?acc=GSE165254
+
+for (chr in chr_list){
+  library('TxDb.Hsapiens.UCSC.hg19.knownGene')
+  txdb <- keepSeqlevels(TxDb.Hsapiens.UCSC.hg19.knownGene, chr) #计算每个染色体，然后再拆分
+  ex <- exonsBy(txdb, by = 'gene')
+  library('rtracklayer')
+  
+  bw <- BigWigFileList(files)
+  
+  exons <- unlist(ex)
+  counts_exons <- matrix(NA, nrow = length(exons), ncol = length(bw))
+  colnames(counts_exons) <- names(bw)
+  for(i in seq_len(length(bw))) {
+    ## For more than one chr, you'll need to change this a bit
+    coverage <- import(bw[[i]], as = 'RleList')[[chr]]
+    counts_exons[, i] <- sum(Views(coverage, ranges(exons)))
+    
+    ## For more than one chr, you can use this code per chr or...
+    ## something like this.
+    # coverage <- import(bw[[i]], as = 'RleList')
+    # for(chr in unique(seqnames(exons))) {
+    #     counts_exons[seqnames(exons) == chr, i] <- sum(Views(coverage[[chr]], ranges(exons[seqnames(exons) == chr])))
+    # }
+  }
+  
+  ## Divide by read length and round to integer numbers
+  #150来自于method with a NextSeq 500/550 High Output Kit v2.5, 150 Cycles, single read
+  #去官网看，https://www.illumina.com/systems/sequencing-platforms/nextseq/specifications.html
+  #read length应该是150
+  
+  counts_exons <- round(counts_exons / 150, 0)  
+  
+  
+  ## Lets explore the results
+  dim(counts_exons)
+  
+  counts_genes <- matrix(NA, nrow = length(ex), ncol = length(bw))
+  colnames(counts_genes) <- names(bw)
+  for(i in seq_len(length(bw))) {
+    counts_genes[, i]  <- sapply(split(counts_exons[, i], names(exons)), sum)
+  }
+  
+  ## Add gene names
+  rownames(counts_genes) <- names(ex)
+  detach("package:TxDb.Hsapiens.UCSC.hg19.knownGene", unload = TRUE)
+  filepath <- paste(paste("bigwig_count/",chr,sep=""),".csv",sep="")
+  write.csv(counts_genes,filepath)
+}
+
+csv_files <- list.files(path = "bigwig_count",full.names = T,pattern = ".csv")
+csv_list <- list()
+for(i in 1:length(csv_files)){
+  csv_list[[i]] <- read.csv(csv_files[i])
+}
+raw_data_raw <- do.call(rbind,csv_list) %>% mutate(ENTREZID=X)
+
+ENTREZID <- bitr(raw_data_raw$X,
+                 fromType = "ENTREZID",
+                 toType = c("SYMBOL"),
+                 OrgDb = org.Hs.eg.db) 
+
+raw_data <- merge(ENTREZID,raw_data_raw,,by="ENTREZID",all = TRUE)
+a <- raw_data %>% filter(SYMBOL=="CCL20")
+
+
