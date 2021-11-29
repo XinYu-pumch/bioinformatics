@@ -1,0 +1,104 @@
+#输入文件是res
+#res的格式
+> colnames(res)
+[1] "ligand"            "receptor"          "cell_from_logFC"   "cell_from_q.value" "cell_from"        
+[6] "cell_to_logFC"     "cell_to_q.value"   "cell_to"           "comm_type"  
+> rownames(res)
+[1] "1"  "2"  "3"
+
+##处理res文件，得到df
+data_2 <- res
+data_2$ligand_cell <- paste(data_2$ligand,data_2$cell_from,sep="|")
+data_2$receptor_cell <- paste(data_2$receptor,data_2$cell_to,sep="|")
+l_list <- list()
+for (lc in unique(data_2$ligand_cell)){
+  a <- data_2[which(data_2$ligand_cell==lc),]
+  b <- data.frame(cell=unique(a$cell_from),
+                  gene=unique(a$ligand),
+                  fc=unique(a$cell_from_logFC))
+  l_list[[lc]] <-b
+}
+l=do.call(rbind,l_list)
+rownames(l) <- NULL
+l$lr <- "ligand"
+
+r_list <- list()
+for (lc in unique(data_2$receptor_cell)){
+  a <- data_2[which(data_2$receptor_cell==lc),]
+  b <- data.frame(cell=unique(a$cell_to),
+                  gene=unique(a$receptor),
+                  fc=unique(a$cell_to_logFC))
+  r_list[[lc]] <-b
+}
+r=do.call(rbind,r_list)
+rownames(r) <- NULL
+r$lr <- "receptor"
+data_2<-rbind(l,r)
+data_2 <- data_2[order(data_2$cell,decreasing=T),]
+rownames(data_2) <- NULL
+data_2$gene_id <- paste("gene", rownames(data_2),sep="")
+data_2 <- data.frame(cell=data_2$cell,
+                     lr=data_2$lr,
+                     gene=data_2$gene,
+                     gene_id=data_2$gene_id,
+                     fc=data_2$fc)
+df <- data_2 %>% arrange(cell)
+#至此获取了所有的文件
+
+
+#######开始绘制TBtools的文件
+
+##first.csv是ChrID文件
+first <- data.frame(table(df[,1])) %>% mutate(length=2*Freq) %>% dplyr::select(Var1,length)
+write.table(first,"first.txt",row.names=F,col.names=F,quote=F,sep="\t")
+
+##得到track文件，提供了track和genome feature list
+track <- list()
+for (celltype in unique(df$cell)){
+  a <- df %>% filter(cell==celltype)
+  track[[celltype]] <- data.frame(cell=celltype,
+                                  gene=a$gene,
+                                  lr=a$lr,
+                                  start=seq(from=0, to=2*nrow(a)-1, by=2),
+                                  end=seq(from=2, to=2*nrow(a)+1, by=2))
+}
+track <- do.call(rbind,track)
+
+a <- leaflet::colorNumeric(c("green", "yellow", "red"),c(min(df$fc),max(df$fc)),nrow(df))
+color <- a(df$fc)
+color_rgb <- c()
+for(i in 1:length(color)){
+  rgb <- col2rgb(color[i])
+  color_rgb[i] <- paste(rgb[1],rgb[2],rgb[3],sep=",")
+}
+track$mean <- color_rgb
+#track$mean <- df$fc+2
+
+write.table(track %>% dplyr::select(cell,start:mean),
+            "track.txt",row.names=F,col.names=F,quote=F,sep="\t")
+
+write.table(track %>% dplyr::select(cell,gene,start,end),
+            "name.txt",row.names=F,col.names=F,quote=F,sep="\t")
+
+#最后是gene间互相关系的文件
+gene_position <- cbind(res %>% mutate(marker=paste(.$ligand,.$cell_from),
+                                      mix=paste(.$ligand,.$cell_from,.$receptor,.$cell_to),
+                                      weigh=sign(.$cell_from_logFC)*(.$cell_from_logFC)*(.$cell_to_logFC)) %>% 
+                         dplyr::select(ligand,cell_from,receptor,cell_to,marker,mix,weigh) %>% 
+                         merge(.,track %>% mutate(marker=paste(.$gene,.$cell)),by="marker") %>% arrange(mix) %>%
+                         select(cell_from,start,end,weigh),
+                       res %>% mutate(marker=paste(.$receptor,.$cell_to),mix=paste(.$ligand,.$cell_from,.$receptor,.$cell_to)) %>% 
+                         dplyr::select(ligand,cell_from,receptor,cell_to,marker,mix) %>% 
+                         merge(.,track %>% mutate(marker=paste(.$gene,.$cell)),by="marker") %>% arrange(mix) %>%
+                         select(cell_to,start,end)) %>% .[order(.$weigh, decreasing= F), ]
+
+a <- leaflet::colorNumeric(c("green", "yellow", "red"),c(min(gene_position$weigh),max(gene_position$weigh)),nrow(gene_position))
+color <- a(gene_position$weigh)
+color_rgb <- c()
+for(i in 1:length(color)){
+  rgb <- col2rgb(color[i])
+  color_rgb[i] <- paste(rgb[1],rgb[2],rgb[3],sep=",")
+}
+gene_position$color <- color_rgb
+write.table(gene_position[,c(1:3,5:8)],
+            "gene_position.txt",row.names=F,col.names=F,quote=F,sep="\t")
