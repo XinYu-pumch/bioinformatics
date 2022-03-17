@@ -1,0 +1,13 @@
+library("ROCR")
+
+ROC <- PCR <- readxl::read_excel("/Users/yuxin/Downloads/N_test/验证队列整合版.xlsx",sheet="stat")
+
+
+pred <- prediction(ROC$CCR6.deltaCT, ROC$condition)
+#pred <- prediction(ROC$CCL5.deltaCT, ROC$condition)
+#pred <- prediction(ROC$ETS1.deltaCT, ROC$condition)
+
+perf <- performance(pred, measure = "tpr", x.measure = "fpr")
+perf_AUC <- performance(pred, measure = "auc")
+perf_AUC@y.values[1]
+plot(perf, main = paste("AUC=",perf_AUC@y.values[1],sep=""), colorize = F)
