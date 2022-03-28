@@ -1,0 +1,286 @@
+#全文参考https://cloud.tencent.com/developer/article/1784632
+#sig_matrix来自single_cell，格式是：sep="\t",quote=F,注意第一列重新用excel编辑，txt格式
+
+library(parallel)
+library(e1071)
+library(preprocessCore)
+sig_matrix <-"LM22.txt"  # CIBERSORT 内置数据库挖掘
+mixture_file <- "N_fpkm2.txt" 
+
+X <- read.table(sig_matrix,header=T,sep="\t",row.names=1,check.names=F)
+Y <- read.table(mixture_file, header=T, sep="\t", check.names=F)
+Y <- Y[!duplicated(Y[,1]),]###去重复基因名
+rownames(Y)<-Y[,1]
+Y<-Y[,-1]
+X <- data.matrix(X)###convert data as matrix
+Y <- data.matrix(Y)
+
+
+X <- X[order(rownames(X)),]###行名字母排序
+Y <- Y[order(rownames(Y)),]###行名字母排序
+
+#anti-log if max < 50 in mixture file
+if(max(Y) < 50) {Y <- 2^Y} ###如果Y矩阵中最大值<50，则变为2的y次方，也就是原始Y是被log2的
+
+QN = F #QN = Quantile normalization of input mixture (default = TRUE)
+#quantile normalization of mixture file
+if(QN == TRUE){
+  tmpc <- colnames(Y)
+  tmpr <- rownames(Y)
+  Y <- normalize.quantiles(Y)#preprocessCore的函数，正态化数据
+  colnames(Y) <- tmpc
+  rownames(Y) <- tmpr
+}
+
+#intersect genes
+Xgns <- row.names(X)
+Ygns <- row.names(Y)
+YintX <- Ygns %in% Xgns ###y中取x
+Y <- Y[YintX,] ###取共有子集
+XintY <- Xgns %in% row.names(Y)###x中取y
+X <- X[XintY,]
+dim(X)
+dim(Y)
+
+
+#standardize sig matrix
+X <- (X - mean(X)) / sd(as.vector(X)) ###标准化数据
+
+Ylist <- as.list(data.matrix(Y)) ###将Y矩阵中每一个数值作为list的一个元素
+yr <- as.numeric(Ylist[ sample(length(Ylist),dim(X)[1]) ])###从Ylist随机挑选nrow（x）个元素
+# yr 这个时候是一个假设的样本
+#standardize mixture,就是scale 函数
+yr <- (yr - mean(yr)) / sd(yr) ##标准化样本
+boxplot(yr)
+
+out=svm(X,yr)##e1071包的函数
+out
+out$SV ##SV=支持向量
+svn_itor <- 3
+
+y=yr
+#try different values of nu
+res <- function(i){
+  if(i==1){nus <- 0.25}
+  if(i==2){nus <- 0.5}
+  if(i==3){nus <- 0.75}
+  model<-svm(X,y,type="nu-regression",kernel="linear",nu=nus,scale=F)
+  model
+}
+
+if(Sys.info()['sysname'] == 'Windows') {
+  
+  out <- mclapply(1:svn_itor, res, mc.cores=1) 
+}else {
+  out <- mclapply(1:svn_itor, res, mc.cores=svn_itor)
+}
+
+
+
+library(parallel)
+clnum<-detectCores() 
+cl <- makeCluster(getOption("cl.cores", clnum))
+clusterExport(cl, c("X","y"),envir=environment())
+clusterEvalQ(cl,library(e1071))
+out <- parLapply(cl,1:svn_itor,res)
+####
+out
+#Initiate two variables with 0
+nusvm <- rep(0,svn_itor)
+corrv <- rep(0,svn_itor)
+
+t <- 1
+while(t <= svn_itor) {
+  
+  # 得到两个向量之间矩阵乘法的权重，此时应该只得到一个数字。
+  # 这样做是乘以系数
+  
+  # 支持向量是数据集的点，它们靠近分隔类别的平面
+  # 现在的问题是，我没有任何类别（离散变量，例如“运动”、“电影”），但我有一个连续变量
+  mySupportVectors <- out[[t]]$SV ###不同nu参数的支持向量
+  
+  # 系数定义
+  myCoefficients <- out[[t]]$coefs ###不同nu参数的系数
+  weights = t(myCoefficients) %*% mySupportVectors ####2个矩阵的乘积
+  
+  # 设置权重和相关性
+  weights[which(weights<0)]<-0 ##小于0的乘积为0
+  w<-weights/sum(weights) ##相关性
+  
+  # 根据对应的权重与参考集相乘
+  u <- sweep(X,MARGIN=2,w,'*') ###sweep类似于apply，多了一个STATS，代表是运算的参数
+  
+  # 统计每行总和
+  k <- apply(u, 1, sum)
+  nusvm[t] <- sqrt((mean((k - y)^2))) ###标准差
+  corrv[t] <- cor(k, y) ##相关性
+  t <- t + 1 ###t从1开始循环，直到t=3
+}
+#pick best model
+rmses <- nusvm
+
+corrv
+mn <- which.min(rmses) ###去标准差最小的nu值为best model
+mn  
+#[1] 1
+model <- out[[mn]]
+# 从nus为0.25,0.5,0.75的3个模型里面挑选一个即可
+
+#get and normalize coefficients
+
+q <- t(model$coefs) %*% model$SV 
+
+q[which(q<0)]<-0
+# w 就是计算后的22种免疫细胞的比例
+w <- (q/sum(q))
+
+mix_rmse <- rmses[mn]
+mix_r <- corrv[mn]
+
+
+# 会返回这个随机的y的免疫细胞组成情况，就是权重w
+newList <- list("w" = w, "mix_rmse" = mix_rmse, "mix_r" = mix_r)
+newList
+
+# 根据对应的权重与参考集相乘
+u <- sweep(X,MARGIN=2,w,'*') 
+k <- apply(u, 1, sum)
+plot(y,k)
+sqrt((mean((k - y)^2))) 
+cor(k, y)
+# 通常这个预测结果都惨不忍睹
+
+CoreAlg <- function(X, y){
+  
+  #try different values of nu
+  svn_itor <- 3
+  
+  res <- function(i){
+    if(i==1){nus <- 0.25}
+    if(i==2){nus <- 0.5}
+    if(i==3){nus <- 0.75}
+    model<-e1071::svm(X,y,type="nu-regression",kernel="linear",nu=nus,scale=F)
+    model
+  }
+  
+  if(Sys.info()['sysname'] == 'Windows') out <- parallel::mclapply(1:svn_itor, res, mc.cores=1) else
+    out <- parallel::mclapply(1:svn_itor, res, mc.cores=svn_itor)
+  
+  nusvm <- rep(0,svn_itor)
+  corrv <- rep(0,svn_itor)
+  
+  #do cibersort
+  t <- 1
+  while(t <= svn_itor) {
+    weights = t(out[[t]]$coefs) %*% out[[t]]$SV
+    weights[which(weights<0)]<-0
+    w<-weights/sum(weights)
+    u <- sweep(X,MARGIN=2,w,'*')
+    k <- apply(u, 1, sum)
+    nusvm[t] <- sqrt((mean((k - y)^2)))
+    corrv[t] <- cor(k, y)
+    t <- t + 1
+  }
+  
+  #pick best model
+  rmses <- nusvm
+  mn <- which.min(rmses)
+  model <- out[[mn]]
+  
+  #get and normalize coefficients
+  q <- t(model$coefs) %*% model$SV
+  q[which(q<0)]<-0
+  w <- (q/sum(q))
+  
+  mix_rmse <- rmses[mn]
+  mix_r <- corrv[mn]
+  
+  newList <- list("w" = w, "mix_rmse" = mix_rmse, "mix_r" = mix_r)
+  
+}
+
+
+itor <- 1
+Ylist <- as.list(data.matrix(Y))
+dist <- matrix()
+# 就是把 CoreAlg 函数运行1000次
+perm=1000
+
+while(itor <= perm){
+  print(itor) # 打印进度
+  
+  #random mixture
+  yr <- as.numeric(Ylist[ sample(length(Ylist),dim(X)[1]) ])
+  
+  #standardize mixture
+  yr <- (yr - mean(yr)) / sd(yr)
+  
+  #run CIBERSORT core algorithm
+  result <- CoreAlg(X, yr)
+  
+  mix_r <- result$mix_r
+  
+  #store correlation
+  if(itor == 1) {dist <- mix_r}
+  else {dist <- rbind(dist, mix_r)}
+  
+  itor <- itor + 1
+}
+####
+newList <- list("dist" = dist)
+nulldist=sort(newList$dist)
+if(F){
+  
+  P=perm
+  #empirical null distribution of correlation coefficients
+  if(P > 0) {nulldist <- sort(doPerm(P, X, Y)$dist)} ###取最小的非负p值
+  print(nulldist)
+}
+
+header <- c('Mixture',colnames(X),"P-value","Correlation","RMSE")
+
+output <- matrix()
+itor <- 1
+mix <- dim(Y)[2] ###取mrna中的样本
+pval <- 9999
+
+while(itor <= mix){
+  
+  ##################################
+  ## Analyze the first mixed sample
+  ##################################
+  
+  y <- Y[,itor]
+  
+  #标准化样本数据集
+  y <- (y - mean(y)) / sd(y)
+  
+  #执行SVR核心算法
+  result <- CoreAlg(X, y)
+  
+  #获得结果
+  w <- result$w
+  mix_r <- result$mix_r
+  mix_rmse <- result$mix_rmse
+  
+  #计算p-value
+  pval <- 1 - (which.min(abs(nulldist - mix_r)) / length(nulldist))
+  
+  #输出output
+  out <- c(colnames(Y)[itor],w,pval,mix_r,mix_rmse)
+  if(itor == 1) {output <- out}
+  else {output <- rbind(output, out)}
+  itor <- itor + 1
+  
+}
+head(output)
+
+
+obj <- rbind(header,output)
+obj <- obj[,-1]
+obj <- obj[-1,]
+obj <- matrix(as.numeric(unlist(obj)),nrow=nrow(obj))
+rownames(obj) <- colnames(Y)
+colnames(obj) <- c(colnames(X),"P-value","Correlation","RMSE")
+obj
+
