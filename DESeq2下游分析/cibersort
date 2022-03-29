@@ -1,5 +1,7 @@
 #全文参考https://cloud.tencent.com/developer/article/1784632
-#sig_matrix来自single_cell，格式是：sep="\t",quote=F,注意第一列重新用excel编辑，txt格式
+#sig_matrix来自single_cell
+#最好是cpm，gene可取2000个variable feature
+#保存格式：第一列为symbol（注意不是列名） ，然后write.table(g,"LDG.txt",sep="\t",quote=F,row.names = F)
 
 library(parallel)
 library(e1071)
