@@ -1,0 +1,8 @@
+##首先安装sratools，在https://www.jianshu.com/p/188df05615c7中
+#https://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?view=software
+#cd进入下载文件夹，解压sratoolkit.tar.gz，得到sratoolkit.3.0.0-mac64
+#安装环境快捷键
+export PATH=$PATH:$PWD/sratoolkit.2.4.0-1.mac64/bin
+
+##下载对应的sra文件，在https://www.ncbi.nlm.nih.gov/Traces/study/?acc=SRP302704&o=acc_s%3Aa&s=SRR13496924,SRR13496925,SRR13496926,SRR13496927,SRR13496928,SRR13496929,SRR13496930,SRR13496931,SRR13496932,SRR13496933,SRR13496934,SRR13496935,SRR13496936,SRR13496937,SRR13496938,SRR13496939,SRR13496940,SRR13496941,SRR13496942,SRR13496943,SRR13496944,SRR13496945,SRR13496946,SRR13496947,SRR13496948
+
