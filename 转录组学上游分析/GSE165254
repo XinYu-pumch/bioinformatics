@@ -18,6 +18,7 @@ fastp -i SRR13496934.1.fastq -o SRR13496934.1.clean.fastq #最傻最快的操作
 for file in `ls SRR*.fastq | perl -lpe 's/.fastq//'`;do nohup fastp -i ${file}.fastq -o ${file}.clean.fastq &;done
 
 ##新建一个hisat2文件夹
+#此处的genome可以用ensemble的，即grch38，解压出来为genome.1.ht2
 mkdir hisat2
 for sample in `ls SRR*.clean.fastq | perl -lpe 's/SRR*.clean.fastq//'`; do hisat2 --new-summary -p 6 -x grch38/genome -U $sample -S ./hisat2/${sample}.sam 2> ./hisat2/${sample}.err; done
 
@@ -42,6 +43,7 @@ done
 ##然后cd bin
 ##然后ls
 ##再执行./featureCounts -T 6 -t exon -g gene_id -a 基因组.gtf -o seq_featurecount.txt bam文件路径（比如xxx/*.sorted.bam）
+##此处gtf文件可以用ensembl的，来自http://ftp.ensembl.org/pub/release-104/gtf/homo_sapiens/
 ./featureCounts -T 6 -t exon -g gene_id -a /Users/yuxin/Downloads/bioinformatics/GSE_raw/clean_fastq/hisat2/genome.gtf -o seq_featurecount_sorted.txt   /Users/yuxin/Downloads/bioinformatics/GSE_raw/clean_fastq/hisat2/*.clean.fastq.sorted.bam
 ##seq_featurecount_sorted.txt在subread/bin里面
 
