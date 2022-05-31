@@ -5,4 +5,16 @@
 export PATH=$PATH:$PWD/sratoolkit.2.4.0-1.mac64/bin
 
 ##下载对应的sra文件，在https://www.ncbi.nlm.nih.gov/Traces/study/?acc=SRP302704&o=acc_s%3Aa&s=SRR13496924,SRR13496925,SRR13496926,SRR13496927,SRR13496928,SRR13496929,SRR13496930,SRR13496931,SRR13496932,SRR13496933,SRR13496934,SRR13496935,SRR13496936,SRR13496937,SRR13496938,SRR13496939,SRR13496940,SRR13496941,SRR13496942,SRR13496943,SRR13496944,SRR13496945,SRR13496946,SRR13496947,SRR13496948
+#转化sra为fastq
+fastq-dump SRR13496934.1.sra   #对于单端测序
+fastq-dump --split-3 SRR13496934.1.sra #双端测序
+#也可以批量操作，前提是进入上层文件夹
+for file in SRR*;do fastq-dump $file;done
+
+##过滤，可以用fastp快速搞定
+conda install fastp
+conda activate fastp
+fastp -i SRR13496934.1.fastq -o SRR13496934.1.clean.fastq #最傻最快的操作
+for file in `ls SRR*.fastq | perl -lpe 's/.fastq//'`;do nohup fastp -i ${file}.fastq -o ${file}.clean.fastq &;done
+
 
