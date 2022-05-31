@@ -19,5 +19,33 @@ for file in `ls SRR*.fastq | perl -lpe 's/.fastq//'`;do nohup fastp -i ${file}.f
 
 ##新建一个hisat2文件夹
 mkdir hisat2
-conda activate hisat2
 for sample in `ls SRR*.clean.fastq | perl -lpe 's/SRR*.clean.fastq//'`; do hisat2 --new-summary -p 6 -x grch38/genome -U $sample -S ./hisat2/${sample}.sam 2> ./hisat2/${sample}.err; done
+
+#利用samtools将sam转化为bam
+cd hisat2 ##进入hisat2文件夹
+conda install samtools
+samtools #如果报错libcrypto.1.0.0.dylib，则自己下载一个libcrypto.1.0.0.dylib
+rm /usr/local/lib/libcrypto.1.0.0.dylib #把原来的给删了
+ln -s /Users/yuxin/Downloads/bioinformatics/libcrypto.1.0.0.dylib /usr/local/lib/libcrypto.1.0.0.dylib
+#通过ln -s a b（用a替换b），来重新生成软链接，参考https://www.jianshu.com/p/21fbc9bd6bc4
+#然后直接批量转化
+for file in *.sam;do
+samtools view -b $file > ${file%.sam}.bam
+samtools sort ${file%.sam}.bam > ${file%.sam}.sorted.bam
+samtools index ${file%.sam}.sorted.bam
+done
+
+#对sorted.bam处理
+##首先下载subread包
+##然后解压
+##然后cd进入
+##然后cd bin
+##然后ls
+##再执行./featureCounts -T 6 -t exon -g gene_id -a 基因组.gtf -o seq_featurecount.txt bam文件路径（比如xxx/*.sorted.bam）
+./featureCounts -T 6 -t exon -g gene_id -a /Users/yuxin/Downloads/bioinformatics/GSE_raw/clean_fastq/hisat2/genome.gtf -o seq_featurecount_sorted.txt   /Users/yuxin/Downloads/bioinformatics/GSE_raw/clean_fastq/hisat2/*.clean.fastq.sorted.bam
+##seq_featurecount_sorted.txt在subread/bin里面
+
+###进入R
+GSE165254_raw <- read.table("/Users/yuxin/Downloads/bioinformatics/GSE_raw/GSE165254_align.txt",header=T) %>% 
+  dplyr::select(-Chr,-Start,-End,-Length,-Strand)
+
