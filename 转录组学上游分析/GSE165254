@@ -17,4 +17,7 @@ conda activate fastp
 fastp -i SRR13496934.1.fastq -o SRR13496934.1.clean.fastq #最傻最快的操作
 for file in `ls SRR*.fastq | perl -lpe 's/.fastq//'`;do nohup fastp -i ${file}.fastq -o ${file}.clean.fastq &;done
 
-
+##新建一个hisat2文件夹
+mkdir hisat2
+conda activate hisat2
+for sample in `ls SRR*.clean.fastq | perl -lpe 's/SRR*.clean.fastq//'`; do hisat2 --new-summary -p 6 -x grch38/genome -U $sample -S ./hisat2/${sample}.sam 2> ./hisat2/${sample}.err; done
