@@ -54,4 +54,20 @@ done
 ###进入R
 GSE165254_raw <- read.table("/Users/yuxin/Downloads/bioinformatics/GSE_raw/GSE165254_align.txt",header=T) %>% 
   dplyr::select(-Chr,-Start,-End,-Length,-Strand)
+  
+  
+###注意比对这一步还可以用STAR
+##首先安装STAR
+##下载https://github.com/alexdobin/STAR/archive/2.7.10a.tar.gz，进入对应上级文件夹
+tar -xzf 2.7.10a.tar.gz
+cd STAR-2.7.10a
+brew install gcc #安装gcc，对于OS.12可能有点问题
+make STARforMacStatic CXX=/path/to/gcc 
+##比如CXX=/usr/local/Cellar/gcc/11.2.0/bin/g++-11，根据实际的安装情况来定
+cp STAR /usr/local/bin #STAR安装完成
+
+#然后建立STAR的索引，下载gtf和fa文件
+#注意自己修改对应的release号
+#https://ftp.ensembl.org/pub/release-106/gtf/homo_sapiens/Homo_sapiens.GRCh38.106.gtf.gz
+#http://ftp.ensembl.org/pub/release-106/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
 
