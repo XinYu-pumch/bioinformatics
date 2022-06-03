@@ -52,7 +52,7 @@ ComplexHeatmap::Heatmap(na.omit(a),row_names_gp = gpar(fontsize = 6)
                         ,column_names_gp = gpar(fontsize = 8),
                         use_raster =F,
                         name = "Exp",
-                        col = c(colorRampPalette(colors = c("navy","white"))(length(bk)/2),colorRampPalette(colors = c("white","red"))(length(bk)/2)),
+                        col = rev(colorRampPalette(RColorBrewer::brewer.pal(9, "RdBu"))(50)),
                         show_row_dend = FALSE,
                         #column_split = 2,
                         top_annotation =HeatmapAnnotation(df=sample['condition'],
