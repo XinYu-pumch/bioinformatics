@@ -1,0 +1,68 @@
+library(ComplexHeatmap)
+library(magick)
+library(circlize)
+while (!is.null(dev.list()))  dev.off()
+#install.packages("magick")
+#全文参考https://zhuanlan.zhihu.com/p/443775631
+#http://showteeth.tech/posts/31202.html
+
+
+marker <- c(c("ACAT1", "ACAT2","HMGCS1","HMGCS2","HMGCR","MVK","PMVK","MVD","IDI1","IDI2"),
+           c( "FPPS","FDPS","FDFT1","LSS","SQLE","GGPS1","DOLK","PDSS1","PDSS2","FNTA","FNTB"))
+
+#首先自己手动标准化矩阵
+a <- t(scale(t(rlogMat4))) %>% as.data.frame(.) %>% 
+  tibble::rownames_to_column("gene_name") %>%
+  filter(gene_name %in% marker) %>% 
+  tibble::column_to_rownames("gene_name") %>%
+  as.matrix(.) %>% na.omit(.)
+
+#重新设定好行的顺序
+rank <- data.frame(marker=marker) %>% filter(marker %in% rownames(a))
+a <- a[rank$marker,]
+
+#似乎use_raster=F反而快一些？？
+bk <- c(seq(min(a),max(a),by=0.01))  #设置颜色
+genelist <- c("LSS","HMGCR") #设置要显示的gene
+index <- which(rownames(a) %in% genelist)
+labs <- rownames(a)[index]
+lab2 = rowAnnotation(foo = anno_mark(at = index,
+                                     labels = labs,
+                                     labels_gp = gpar(fontsize = 8),
+                                     lines_gp = gpar()))
+
+#如果sample想按照指定顺序，则cluster_colums=F即可；row同理(?)
+ComplexHeatmap::Heatmap(a,row_names_gp = gpar(fontsize = 6)
+                        ,column_names_gp = gpar(fontsize = 8),
+                        use_raster =F,
+                        name = "Exp",
+                        col = c(colorRampPalette(colors = c("navy","white"))(length(bk)/2),colorRampPalette(colors = c("white","red"))(length(bk)/2)),
+                        show_row_dend = FALSE,
+                        #column_split = 2,
+                        top_annotation =HeatmapAnnotation(df=sample['condition'],
+                                                          col = list(type =c("BD"="red","HC"="blue"))),
+                        show_row_names = F,
+                        right_annotation = lab2,
+                        cluster_columns = F,
+                        cluster_rows = T,
+                        row_order=rank$marker)
+
+#竖版分割的含义，比如split=c(rep("A", 10),rep("B", 10))，则表明前10个为一组，后10个为一组
+ComplexHeatmap::Heatmap(na.omit(a),row_names_gp = gpar(fontsize = 6)
+                        ,column_names_gp = gpar(fontsize = 8),
+                        use_raster =F,
+                        name = "Exp",
+                        col = c(colorRampPalette(colors = c("navy","white"))(length(bk)/2),colorRampPalette(colors = c("white","red"))(length(bk)/2)),
+                        show_row_dend = FALSE,
+                        #column_split = 2,
+                        top_annotation =HeatmapAnnotation(df=sample['condition'],
+                                                          col = list(type =c("BD"="red","HC"="blue"))),
+                        show_row_names = T,
+                        right_annotation = NULL,
+                        cluster_columns = F,
+                        cluster_rows = F,
+                        row_order=rank$marker,
+                        split=c(rep("A", 10),rep("B", 10)),)
+
+
+
