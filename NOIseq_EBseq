@@ -1,0 +1,172 @@
+library(limma)
+library(edge)
+
+raw_data <- readxl::read_excel("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/RNA-seq/2021_10_17_miR122/all_compare.xlsx",sheet=1)
+#raw_data_mRNA <- raw_data 
+raw_data_mRNA <- raw_data #%>% filter(gene_biotype=="protein_coding")
+
+#考虑剔除第一对
+counts <- data.frame(nc1=raw_data_mRNA$nc_01_count,
+                   nc2=raw_data_mRNA$nc_02_count,
+                   nc3=raw_data_mRNA$nc_03_count,
+                   nc4=raw_data_mRNA$nc_04_count,
+                   nc5=raw_data_mRNA$nc_05_count,
+                   nc6=raw_data_mRNA$nc_06_count,
+                   miR_122_5p_1=raw_data_mRNA$miR_122_01_count,
+                   miR_122_5p_2=raw_data_mRNA$miR_122_02_count,
+                   miR_122_5p_3=raw_data_mRNA$miR_122_03_count,
+                   miR_122_5p_4=raw_data_mRNA$miR_122_04_count,
+                   miR_122_5p_5=raw_data_mRNA$miR_122_05_count,
+                   miR_122_5p_6=raw_data_mRNA$miR_122_06_count)
+rownames(counts)<-raw_data_mRNA$gene_id
+#Creates a DGEList
+dge_counts <- DGEList(counts = counts,remove.zeros = T)
+#Calculate normalization factors to scale the raw library sizes.
+
+#用TMM进行标准化
+logCPM_counts <- calcNormFactors(dge_counts) %>% cpm(. , log=TRUE)
+y <- cpm(tmm_counts , log=TRUE) %>% voom(., design, plot = T)
+y = voom(counts, design, plot = T)
+
+group_list <- factor(c(rep("control",6), rep("treat",6)))
+design <- model.matrix(~group_list)
+colnames(design) <- levels(group_list)
+rownames(design) <- colnames(counts)
+
+fit <- lmFit(logCPM_counts, design)
+fit <- eBayes(fit)
+DE_genes <- topTable(fit, coef = 2,p.value = 0.05, lfc = log2(1.5), number = Inf,sort.by="logFC")
+b <- DE_genes %>% tibble::rownames_to_column("id") %>% filter(id=="ENSG00000128604")
+
+  
+fit <- lmFit(y, design)
+fit <- eBayes(fit)
+DE_genes <- topTable(fit, coef = 2,p.value = 0.05, lfc = log2(1.5), number = Inf,sort.by="logFC")
+
+####
+#https://www.jianshu.com/p/364650e8bd3e
+library("EBSeq")
+GeneMat <-data
+Sizes=MedianNorm(GeneMat)
+Conditions=as.factor(rep(c("nc","miR"),each=6)) #设置样本类型
+
+EBOut = EBTest(as.matrix(GeneMat),Conditions=Conditions,sizeFactors=Sizes, maxround=5)
+EBDERes=GetDEResults(EBOut, FDR=0.01,Threshold_FC=0.6,Threshold_FCRatio=0.9)
+summary(EBDERes)
+
+
+str(EBDERes$DEfound) #a list of genes identified with 5% FDR
+
+head(EBDERes$PPMat) # two columns PPEE and PPDE, corresponding to the posterior probabilities of being EE or DE for each gene
+str(EBDERes$Status) 
+FC=PostFC(EBOut)
+PlotPostVsRawFC(EBOut,FC) 
+a <- data.frame(PostFC=FC$PostFC,
+                RealFC=FC$RealFC) %>% tibble::rownames_to_column("id") %>% filter(id=="ENSG00000128604")
+b <- data.frame(id=EBDERes$DEfound) %>% filter(id=="ENSG00000128604")
+
+##https://www.bioconductor.org/packages/devel/bioc/vignettes/NOISeq/inst/doc/NOISeq.pdf
+library("NOISeq")
+raw_data <- readxl::read_excel("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/RNA-seq/2021_10_17_miR122/all_compare.xlsx",sheet=1)
+data <- data.frame(nc1=raw_data_mRNA$nc_01_count,
+                   nc2=raw_data_mRNA$nc_02_count,
+                   nc3=raw_data_mRNA$nc_03_count,
+                   nc4=raw_data_mRNA$nc_04_count,
+                   nc5=raw_data_mRNA$nc_05_count,
+                   nc6=raw_data_mRNA$nc_06_count,
+                   miR_122_5p_1=raw_data_mRNA$miR_122_01_count,
+                   miR_122_5p_2=raw_data_mRNA$miR_122_02_count,
+                   miR_122_5p_3=raw_data_mRNA$miR_122_03_count,
+                   miR_122_5p_4=raw_data_mRNA$miR_122_04_count,
+                   miR_122_5p_5=raw_data_mRNA$miR_122_05_count,
+                   miR_122_5p_6=raw_data_mRNA$miR_122_06_count)
+rownames(data)<-raw_data_mRNA$gene_id
+colnames(data)<-c("nc1","nc2","nc3","nc4","nc5","nc6",
+                  "miR_122_01","miR_122_02","miR_122_03","miR_122_04","miR_122_05","miR_122_06")
+sample <- data.frame(condition=c(rep("nc",6),rep("miR_122_5p",6)),
+                     batch=c("6","2","3","1","5","4",
+                             "5","2","3","6","1","4"))
+mydata <- readData(data = data, 
+                   length = raw_data %>% dplyr::select(gene_id, gene_length) %>%
+                     tibble::column_to_rownames("gene_id"), 
+                   biotype = raw_data %>% dplyr::select(gene_id, gene_biotype) %>%
+                     tibble::column_to_rownames("gene_id"),
+                   chromosome = raw_data %>% dplyr::select(gene_id, gene_chr:gene_end) %>%
+                     tibble::column_to_rownames("gene_id"),
+                   factors=sample)
+str(mydata)
+head(assayData(mydata)$exprs)
+head(pData(mydata))
+View(featureData(mydata)@data)
+##
+myexplodata <- dat(mydata, type = "biodetection")
+explo.plot(myexplodata, plottype = "persample")
+mynicedata <- dat2save(myexplodata)
+
+mycountsbio = dat(mydata, factor = NULL, type = "countsbio")
+explo.plot(mycountsbio, toplot = "protein_coding", samples = NULL, plottype = "boxplot")
+explo.plot(mycountsbio, toplot = 1, samples = NULL, plottype = "barplot")
+
+myRPKM = rpkm(assayData(mydata)$exprs, long = raw_data$gene_length, k = 0, lc = 1)
+myfilt = filtered.data(data, factor = sample$condition, norm = FALSE,
+                       depth = NULL, method = 1, cv.cutoff = 100, cpm = 1, p.adj = "fdr")
+
+mynoiseq = noiseq(mydata, k = 0.5, norm = "rpkm", factor = "condition", pnr = 0.2,
+                  nss = 5, v = 0.02, lc = 1, replicates = "technical")
+
+mynoiseq.tmm = noiseq(mydata, k = 0.5, norm = "tmm", factor = "condition",
+                      conditions = c("nc", "miR_122_5p"), lc = 0, replicates = "technical")
+
+mynoiseqbio = noiseqbio(mydata, k = 0.5, norm = "rpkm", factor = "condition",
+                        lc = 1, r = 20, adj = 1.5, plot = FALSE, a0per = 0.9, random.seed = 12345,
+                        filter = 2)
+mynoiseqbio.tmm = noiseqbio(mydata, k = 0.5, norm = "tmm", factor = "condition",conditions = c("nc", "miR_122_5p"),
+                        lc = 0, r = 20, adj = 1.5, plot = FALSE, a0per = 0.9, random.seed = 12345,
+                        filter = 2)
+
+mynoiseq.deg = degenes(mynoiseq, q = 0.75, M = NULL)
+mynoiseq.tmm.deg = degenes(mynoiseq.tmm, q = 0.75, M = NULL)
+mynoiseqbio.deg = degenes(mynoiseqbio, q = 0.95, M = NULL)
+
+a <- mynoiseq@results[[1]] %>% tibble::rownames_to_column("id") %>% filter(id=="ENSG00000128604")
+b <- mynoiseq.tmm@results[[1]] %>% tibble::rownames_to_column("id") %>% filter(id=="ENSG00000128604")
+c <- mynoiseqbio@results[[1]] %>% tibble::rownames_to_column("id") %>% filter(id=="ENSG00000128604")
+d <- mynoiseqbio.tmm@results[[1]] %>% tibble::rownames_to_column("id") %>% filter(id=="ENSG00000128604")
+
+nrow(mynoiseqbio.tmm@results[[1]] %>% filter(Biotype=="protein_coding",prob>=0.95))
+
+nrow(mynoiseq@results[[1]] %>% filter(prob>=0.7))
+nrow(mynoiseq.tmm@results[[1]] %>% filter(prob>=0.75))
+nrow(mynoiseqbio@results[[1]] %>% filter(prob>=0.75))
+##mynoiseqbio.tmm
+res <- mynoiseq.tmm@results[[1]]
+res_combined <- merge(res %>% tibble::rownames_to_column("gene_id"),
+                      raw_data %>% select(gene_id:miR_122_06_count,gene_name,tf_family,gene_description),
+                      by="gene_id")
+
+a <- res_combined %>% filter(gene_name=="IRF5")
+
+nrow(res_combined %>% filter(prob>=0.75,Biotype=="protein_coding"))
+#####
+DE.plot(mynoiseq.tmm, q = 0.75, graphic = "expr", log.scale = TRUE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
