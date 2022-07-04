@@ -1,0 +1,44 @@
+#参考https://www.cnblogs.com/yanjiamin/p/12057362.html
+
+#先提取每个mRNA的3UTR
+data(utr3.hg19)
+utr3_info <- as.data.frame(threeUTRsByTranscript(TxDb.Hsapiens.UCSC.hg19.knownGene, use.names=TRUE)) %>% 
+  mutate(transcript=group_name) %>% 
+  merge(as.data.frame(utr3.hg19),.,by="transcript") %>%
+  dplyr::filter(feature=="utr3") %>% 
+  mutate(sequence=getSeq(Hsapiens, .$seqnames.y, 
+                         start=.$start.y, end=.$end.y, strand=.$strand.y, 
+                         as.character=TRUE))
+
+#筛选没有symbol名的
+utr3_info <- utr3_info %>% filter(symbol !="")
+
+#在构成fasta格式
+res <- paste0(">",utr3_info$symbol,"\n",utr3_info$sequence)
+write.table(paste(res,collapse = "\n"),
+            file="3utr.fasta",
+            row.names=F,
+            quote=F,
+            col.names = F)
+m#iR同理
+miR <- data.frame(miR=c("miR_122_5p","miR_6501_5p","miR_134_5p"),
+                  seq=c("uggagugugacaaugguguuug",
+                        "ugugacugguugaccagagggg",
+                        "aguugccagggcugccuuuggu"))
+
+write.table(paste(paste0(">",miR$miR,"\n",toupper(miR$seq)),collapse = "\n"),
+            file="miR.fasta",
+            row.names=F,
+            quote=F,
+            col.names = F)
+            
+            
+#再进入下载并安装好的miRanda-3.3a文件夹中
+#-sc 140 筛选比140大的 
+#-en -20 筛选比-20小的
+miranda miR.fasta 3utr.fasta -sc 140 -en -20 >acactcca.txt 
+
+grep '>' acactcca.txt > acactcca_2.txt  #得到结果文件
+
+
+            
