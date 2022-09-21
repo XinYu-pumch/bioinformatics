@@ -1,0 +1,16 @@
+
+
+metadata <- data.frame(row.names = colnames(rlogMat3))
+pca <- PCAtools::pca(as.matrix(na.omit(rlogMat3)), metadata = metadata, removeVar = 0.1) #此处removeVar取0
+PCAtools::biplot(pca)
+a <- pca[["rotated"]] %>% mutate(condition=sample$condition)
+p <- ggplot(data = a, aes(x = PC1, y = PC2)) +
+  geom_point(aes(color = condition), size = 3) +  #根据样本坐标绘制二维散点图
+  scale_color_manual(values = c('orange', 'purple')) +  #自定义颜色
+  labs(x =  paste('PCA1:', pca[["variance"]][["PC1"]], '%'), y = paste('PCA2:', pca[["variance"]][["PC2"]], '%'), color = '') +
+  theme(panel.grid = element_blank(), panel.background = element_rect(color = 'black', fill = 'transparent'), 
+        legend.key = element_rect(fill = 'transparent')) + 
+  stat_ellipse(aes(fill = condition), geom = 'polygon', level = 0.95, alpha = 0.1, show.legend = FALSE) +
+  scale_fill_manual(values = c('orange', 'purple')) +
+  geom_text(aes(PC1, PC2,label=rownames(a))) + theme_classic(base_size=8)
+p
