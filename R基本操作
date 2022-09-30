@@ -126,5 +126,11 @@ mm(gsub("\\.\\.@","# ",gsub("\\.\\. ","#",out2)),type ="text")
 ##或者用str看
 str(cellchat)
 
+#字符串操作
+##提取字符串里面所有的大写字母
+a <- stringr::str_extract_all("WokrTTddTTDD", "[A-Z]+")
+b <- a[[1]]
+c <- paste(b[1:length(b)],collapse = "")
+
 
 
