@@ -1,0 +1,287 @@
+library(dplyr)
+library(ggplot2)
+#setwd("/Users/yuxin/Downloads/bioinformatics")
+lnc_exp <- readxl::read_excel("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/Th17/lnc结果/6V6/Report/GeneralData/LncRNA\ Expression\ Profiling/LncRNA\ Expression\ Profiling\ Data.xlsx",
+                              sheet=1,skip=66)
+lnc_dif_up <- readxl::read_excel("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/Th17/lnc结果/6V6/Report/GeneralData/LncRNA\ Expression\ Profiling/All\ Comparison\ LncRNAs/BD_vs_HC_unpaired.xlsx",
+                                 sheet=1,skip=75)
+lnc_dif_down <- readxl::read_excel("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/Th17/lnc结果/6V6/Report/GeneralData/LncRNA\ Expression\ Profiling/All\ Comparison\ LncRNAs/BD_vs_HC_unpaired.xlsx",
+                                   sheet=2,skip=74)
+lnc_dif_down$`Fold Change` <- -1*lnc_dif_down$`Fold Change`
+lnc_dif <- rbind(lnc_dif_up,lnc_dif_down) 
+lnc_dif2<- lnc_dif %>% dplyr::distinct(Transcript_ID,.keep_all = TRUE) %>%
+  dplyr::select(Transcript_ID:ProbeName,source,RNAlength,Sequence,
+                `group-BD(raw)`:`[HC14, HC](normalized)`)
+
+
+mRNA_exp <- readxl::read_excel("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/Th17/lnc结果/6V6/Report/GeneralData/mRNA\ Expression\ Profiling/mRNA\ Expression\ Profiling\ Data.xlsx",
+                               sheet=1,skip=37)
+mRNA_dif_up <- readxl::read_excel("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/Th17/lnc结果/6V6/Report/GeneralData/mRNA\ Expression\ Profiling/All\ Comparison\ mRNAs/BD_vs_HC_unpaired.xls",
+                                  sheet=1,skip=45)
+mRNA_dif_down <- readxl::read_excel("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/Th17/lnc结果/6V6/Report/GeneralData/mRNA\ Expression\ Profiling/All\ Comparison\ mRNAs/BD_vs_HC_unpaired.xls",
+                                    sheet=2,skip=45)
+mRNA_dif_down$`Fold Change` <- -1*mRNA_dif_down$`Fold Change`
+mRNA_dif <- rbind(mRNA_dif_up,mRNA_dif_down)
+
+mRNA_exp_clean <- mRNA_exp %>% arrange(desc(`[BD11](normalized)`)) %>% 
+  distinct(GeneID,.keep_all=T)
+
+mRNA_dif_clean <- mRNA_dif %>% arrange(desc(`[BD2, BD](normalized)`)) %>% 
+  distinct(GeneID,.keep_all=T)
+
+data_lnc <- mRNA_dif_clean %>% dplyr::select(GeneSymbol,`Fold Change`,`P-value`,`[BD2, BD](normalized)`:`[HC14, HC](normalized)`)
+colnames(data_lnc) <- c("gene_name","log2fc","pvalue","BD2","BD3","BD11","BD15","BD16","BD17",
+                        "HC1","HC2","HC3","HC6","HC7","HC14")
+data_lnc2 <- data_lnc %>% dplyr::select(gene_name,BD2:HC14) %>% arrange(desc(BD2)) %>% 
+  distinct(gene_name,.keep_all = TRUE) %>% 
+  tibble::column_to_rownames("gene_name")
+
+data_lnc3 <- mRNA_dif_clean %>% dplyr::select(GeneSymbol,`Fold Change`,`P-value`,`[BD2, BD](raw)`:`[HC14, HC](raw)`)
+colnames(data_lnc3) <- c("gene_name","log2fc","pvalue","BD2","BD3","BD11","BD15","BD16","BD17",
+                         "HC1","HC2","HC3","HC6","HC7","HC14")
+data_lnc3 <- data_lnc3 %>% dplyr::select(gene_name,BD2:HC14) %>% arrange(desc(BD2)) %>% 
+  distinct(gene_name,.keep_all = TRUE)
+
+#先看ceRNA
+library("InPAS")
+library("org.Hs.eg.db")
+library("annotate")
+library("BSgenome")
+library("BSgenome.Hsapiens.UCSC.hg19") 
+library("plyr")
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+library("Homo.sapiens")
+library("rentrez")
+library("Biostrings")
+library("seqinr")
+library("rtracklayer")
+library("mgsub")
+library("stringi")
+#需要准备lncipidia的几个文件
+#lncipedia_5_2_ensembl_92.txt
+#lncipedia_5_2_hg19.bed
+#lncipedia_5_2_hg19.gff和lncipedia_5_2_hg19.gif
+#lncipedia_5_2_refseq.txt
+#lncipedia_5_2.fasta
+#和所有成熟miRNA的序列文件mature.fa
+#根据symbol，获取所有基因组的3UTR序列
+data(utr3.hg19)
+utr3_info <- as.data.frame(threeUTRsByTranscript(TxDb.Hsapiens.UCSC.hg19.knownGene, use.names=TRUE)) %>% 
+  mutate(transcript=group_name) %>% 
+  merge(as.data.frame(utr3.hg19),.,by="transcript") %>%
+  filter(feature=="utr3") %>% 
+  mutate(sequence=getSeq(Hsapiens, .$seqnames.y, 
+                         start=.$start.y, end=.$end.y, strand=.$strand.y, 
+                         as.character=TRUE))
+
+##
+mRNA_deg <- mRNA_dif %>% filter(`P-value` <=0.05,abs(`Fold Change`) >=1) %>%
+  mutate(symbol=GeneSymbol) %>% 
+  merge(utr3_info %>% dplyr::select(symbol,sequence),.,by="symbol") %>%
+  mutate(length=nchar(sequence))
+
+miRNA <-seqinr::read.fasta(file = "lncipedia/mature.fa", 
+                           seqtype = "DNA",as.string = TRUE) %>% 
+  do.call(rbind,.) %>% as.data.frame(.) %>% 
+  tibble::rownames_to_column("miRNA") %>% mutate(sequence=V1) %>%
+  dplyr::select(miRNA,sequence) %>% filter(.,grepl("hsa",miRNA)) %>% 
+  mutate(first_8 = substring(.$sequence, 1, 8)) %>% 
+  mutate(seed_sequence= stri_reverse(mgsub(.$first_8,
+                                           c("A","U","G","C","a","g","u","c","N","n"),
+                                           c("T","A","C","G","t","c","a","g","N","n"))))
+
+gene <- "FOXO1" 
+UTR_seq <- mRNA_deg %>% filter(GeneSymbol==gene) %>%
+  .$sequence %>%  .[[1]]
+
+write.table(paste(paste0(">",miRNA$miRNA,"\n",toupper(miRNA$sequence)),collapse = "\n"),
+            file="miR.fasta",
+            row.names=F,
+            quote=F,
+            col.names = F)
+write.table(paste(paste0(">","FOXO1","\n",toupper(UTR_seq)),collapse = "\n"),
+            file="FOXO1.fasta",
+            row.names=F,
+            quote=F,
+            col.names = F)
+#输入miranda miR.fasta FOXO1.fasta -sc 140 -en -20 >FOXO1_miRNA_miranda.txt
+#得到FOXO1_miRNA_miranda.txt
+#grep '>' FOXO1_miRNA_miranda.txt > FOXO1_miRNA_miranda2.txt
+FOXO1_miRNA_miranda <- read.table("FOXO1_miRNA_miranda2.txt",
+                                  sep="\t",fill=T,row.names = NULL,header=F)  %>%
+  dplyr::mutate(sc=V3,en=V4) %>%
+  dplyr::filter(.,!grepl(">>",V1)) %>% 
+  tidyr::separate(.,V1,into=c("c","miRNA"),sep=">") %>% 
+  dplyr::select(-c)  %>% merge(.,miRNA %>% dplyr::select(miRNA,sequence),by="miRNA") %>%
+  dplyr::select(miRNA,sequence,sc,en) %>% dplyr::filter(sc>=150,en<=-25)
+write.csv(FOXO1_miRNA_miranda,"FOXO1_miRNA_miranda_final.csv")
+
+#########
+#用outLncRNA去配对
+outLncRNA_seq <-seqinr::read.fasta(file = "outLncRNA.fa", 
+                               seqtype = "AA",as.string = TRUE) %>% do.call(rbind,.) %>% 
+  as.data.frame(.) %>% mutate(sequence=V1) %>% 
+  dplyr::select(sequence) %>% 
+  tibble::rownames_to_column("noncode_id") 
+outLncRNA_name <- read.table("NONCODEv5_source",fill=T,header=F) %>% 
+  mutate(noncode_id=V1,Transcript_ID=V3) %>% dplyr::select(noncode_id,Transcript_ID)
+outLncRNA <- merge(outLncRNA_name,outLncRNA_seq,by="noncode_id") %>% 
+  dplyr::select(Transcript_ID,sequence) %>% mutate(db="outlncRNA")
+length(outLncRNA$sequence)-length(unique(outLncRNA$Transcript_ID))
+
+
+#载入lncpedia
+lncipedia_fasta<-seqinr::read.fasta(file = "lncipedia/lncipedia_5_2.fasta", 
+                                    seqtype = "DNA",as.string = TRUE) %>% 
+  do.call(rbind,.) %>% as.data.frame(.) %>% 
+  tibble::rownames_to_column("lnc_symbol") %>% mutate(sequence=V1) %>%
+  dplyr::select(lnc_symbol,sequence)
+
+lncipedia_id <- rbind(read.table("lncipedia/lncipedia_5_2_ensembl_92.txt",header = TRUE) %>%
+                        mutate(Transcript_ID=substring(.$ensemblTranscriptID, 1, 15),
+                               rank_1=substring(.$ensemblTranscriptID, 17,last=1000000L),
+                               lnc_symbol=lncipediaTranscriptID) %>% 
+                        dplyr::select(lnc_symbol,Transcript_ID),
+                      read.table("lncipedia/lncipedia_5_2_refseq.txt",header=TRUE) %>% 
+                        mutate(Transcript_ID=substring(.$RefSeqID, 1, 9),
+                               rank_2=substring(.$RefSeqID, 11,last=1000000L),
+                               lnc_symbol=lncipediaTranscriptID) %>% dplyr::select(lnc_symbol,Transcript_ID) )
+lncipedia <- merge(lncipedia_id,lncipedia_fasta ,by="lnc_symbol") %>% 
+  dplyr::select(Transcript_ID,sequence) %>% mutate(db="lncipedia")
+#length(lncipedia$sequence)-length(unique(lncipedia$Transcript_ID))
+#lncipedia没有重复
+
+
+#genecode
+gencode_raw <-seqinr::read.fasta(file = "gencode.v41.transcripts.fa", 
+                             seqtype = "AA",as.string = TRUE) %>% 
+  do.call(rbind,.) %>% as.data.frame(.) %>% tibble::rownames_to_column("ID") %>% 
+  mutate(gencode=substr(.$ID,1,17)) %>% mutate(genecode2=substr(.$gencode,1,15))
+gencode <- gencode_raw %>% mutate(Transcript_ID=genecode2,sequence=V1,db="gencode") %>%
+  dplyr::select(Transcript_ID,sequence,db)
+#length(gencode$sequence)-length(unique(gencode$Transcript_ID))
+
+##refseq
+refseq_raw <-seqinr::read.fasta(file = "GRCh38_latest_rna.fna", 
+                                seqtype = "AA",as.string = TRUE)
+refseq <- refseq_raw %>% do.call(rbind,.) %>% as.data.frame(.)%>%
+  mutate(sequence=V1) %>% dplyr::select(sequence) %>% tibble::rownames_to_column("id") %>%
+  mutate(Transcript_ID=substr(.$id,1,9)) %>% 
+  mutate(db="refseq") %>%
+  dplyr::select(Transcript_ID,sequence,db)
+####
+
+
+##TCOS
+a <- lnc_dif2 %>% dplyr::filter(.,grepl("TCONS",Transcript_ID) ) %>% .$Transcript_ID
+write.table(a,"TCONS.txt",row.names = F,quote=F)#然后上传到uscs-genome browser
+TCONS <- seqinr::read.fasta(file = "TCOS_fa.fa", 
+                                seqtype = "AA",as.string = TRUE)%>% 
+  do.call(rbind,.) %>% 
+  as.data.frame(.) %>%
+  tibble::rownames_to_column("tp") %>%
+  tidyr::separate(.,tp,into = c("hg","Transcript_ID"),sep = "lincRNAsTranscripts_") %>%
+  mutate(sequence=V1,db="TCOS") %>% dplyr::select(Transcript_ID,sequence,db)
+
+###开始筛选
+lnc_sequence_combined <- rbind(refseq,gencode,lncipedia,outLncRNA,TCONS) %>% 
+  mutate(sp=paste(Transcript_ID,toupper(sequence),sep="")) %>% 
+  arrange(sp) %>% distinct(sp,.keep_all=TRUE)
+lnc_seq <- merge(lnc_sequence_combined,lnc_dif2,by="Transcript_ID",all.x = TRUE) %>% 
+  dplyr::filter(ProbeName != "") %>% mutate(length=nchar(sequence)) %>% 
+  mutate(dif=length-RNAlength,
+         contain=stringr::str_detect(toupper(.$sequence), .$Sequence))
+#length(lnc_dif2$Transcript_ID)-length(unique(lnc_seq$Transcript_ID))
+length(lnc_seq %>% dplyr::filter(contain=="TRUE" & dif==0) %>% .$Transcript_ID %>% unique(.))
+length(unique(lnc_seq$Transcript_ID))
+length(lnc_seq$Transcript_ID)
+#匹配者26476/34533,匹配率76%
+#发现仍然有7000多个没有匹配
+write.csv(lnc_seq,"lnc_seq.csv")
+
+T<-VennDiagram::venn.diagram(list(outlncRNA=lnc_seq %>% dplyr::filter(db == "outlncRNA") %>% .$Transcript_ID %>% unique(.),
+                                  gencode=lnc_seq %>% dplyr::filter(db == "gencode") %>% .$Transcript_ID %>% unique(.),
+                                  lncipedia=lnc_seq %>% dplyr::filter(db == "lncipedia") %>% .$Transcript_ID %>% unique(.),
+                                  refseq=lnc_seq %>% dplyr::filter(db == "refseq")%>% .$Transcript_ID %>% unique(.),
+                                  TCOS=lnc_seq %>% dplyr::filter(db == "TCOS") %>% .$Transcript_ID %>% unique(.),
+                             ALL_gene=unique(lnc_dif2$Transcript_ID)),
+                             filename=NULL,lwd=1,lty=2,
+                             col=c('red','green','blue',"grey","navy","yellow"),
+                             fill=c('red','green','blue',"grey","navy","yellow"),
+                             cat.col=c('red','green','blue',"grey","navy","yellow"),
+                             reverse=TRUE)
+grid::grid.draw(T)
+
+
+###相关性筛选lnc
+foxo1_lnc_r <- t(rbind( mRNA_deg %>% dplyr::filter(GeneSymbol %in% gene) %>% dplyr::distinct(Transcript_ID,.keep_all=TRUE) %>%
+                          dplyr::select(GeneSymbol, `[BD2, BD](normalized)`:`[HC14, HC](normalized)`) %>% 
+                          tibble::column_to_rownames("GeneSymbol"),
+                        lnc_dif2 %>% 
+                          dplyr::filter(`P-value` <=0.05 & abs(`Fold Change`) >=2)  %>% 
+                          dplyr::select(Transcript_ID,`[BD2, BD](normalized)`:`[HC14, HC](normalized)`) %>% 
+                          tibble::column_to_rownames("Transcript_ID"))) %>%
+  cor(.) %>% as.data.frame(.) %>%
+  tibble::rownames_to_column("name") %>% .[,1:2] %>%
+  data.frame(Transcript_ID=.$name,r=.[,2]) %>%.[,3:4] %>% dplyr::filter(r>=0.9)
+length(unique(foxo1_lnc_r$Transcript_ID))
+
+lnc_r <- merge(foxo1_lnc_r,lnc_seq,by="Transcript_ID",all.y=TRUE) %>% 
+  dplyr::filter(r !="") %>% arrange(abs(dif)) %>% distinct(.,Transcript_ID,.keep_all=TRUE)
+#90/113个有seq
+length(unique(foxo1_lnc_r$Transcript_ID))
+length(unique(lnc_r$Transcript_ID))
+length(lnc_r$Transcript_ID)
+
+##
+nrow(lnc_r %>% dplyr::filter(range==0) )
+lnc_r[which(lnc_r$range != 0 ),'sequence'] <- NA
+lnc_r <- lnc_r %>% dplyr::select(-range,-width) %>% mutate(width = nchar(.$sequence)) %>%
+  mutate(range= width-RNAlength)
+write.csv(lnc_r,"lnc_r.csv")
+
+
+###
+write.table(paste(paste0(">",lnc_r$Transcript_ID,"\n",toupper(lnc_r$sequence)),collapse = "\n"),
+            file="lnc.fasta",
+            row.names=F,
+            quote=F,
+            col.names = F)
+write.table(paste(paste0(">",FOXO1_miRNA_miranda$miRNA,"\n",toupper(FOXO1_miRNA_miranda$sequence)),collapse = "\n"),
+            file="miRNA_foxo1.fasta",
+            row.names=F,
+            quote=F,
+            col.names = F)
+#输入miranda miRNA_foxo1.fasta lnc.fasta -sc 140 -en -20 >lnc_miRNA_miranda.txt
+#grep '>' lnc_miRNA_miranda.txt > lnc_miRNA_miranda2.txt
+lnc_miRNA_miranda_raw <- read.table("lnc_miRNA_miranda2.txt",
+                                sep="\t",fill=TRUE,row.names = NULL,header=F) %>% 
+  dplyr::mutate(sc=V3,en=V4,Transcript_ID=V2) %>%
+  dplyr::filter(.,!grepl(">>",V1)) %>% 
+  tidyr::separate(.,V1,into=c("c","miRNA"),sep=">") %>% 
+  dplyr::select(-c)  %>%
+  dplyr::select(miRNA,Transcript_ID,sc,en) %>% dplyr::filter(sc>=150,en<=-25) %>% 
+  mutate(sp=paste(Transcript_ID,miRNA,sep="")) %>% distinct(.,sp,.keep_all = TRUE)
+lnc_miRNA_miranda_raw  <- merge(as.data.frame(table(lnc_miRNA_miranda_raw$Transcript_ID)) %>% mutate(Transcript_ID=Var1)
+                            ,lnc_miRNA_miranda_raw,by="Transcript_ID") %>%
+  dplyr::select(Transcript_ID,Freq,miRNA)
+ 
+lnc_miRNA_miranda <- merge(lnc_miRNA_miranda_raw, lnc_r,by="Transcript_ID")
+
+a <- lnc_miRNA_miranda %>% arrange(Transcript_ID) %>%
+  distinct(.,Transcript_ID,.keep_all=TRUE) %>% 
+  dplyr::select(Transcript_ID,r,Freq,sequence,`P-value`,`Fold Change`,Sequence,
+                dif,contain,`group-HC(raw)`) %>% arrange(desc(Freq)) %>%
+  dplyr::filter(Freq>=3,`group-HC(raw)`>=100)
+
+write.csv(a,"lnc_miRNA_miranda.csv")
+#ENST00000420195似乎是独特的
+#ENST00000562691有同源，但有较长的独特序列
+
+#
+
+
+
+
+
+
