@@ -79,3 +79,24 @@ Ma_DC_score <- function (object, s.features, g2m.features, set.ident = FALSE,
 seurat <- Ma_DC_score(object = mono.obj.all_rename, s.features = Ma_genes, g2m.features = DC_genes, set.ident = TRUE)
 Seurat::VlnPlot(seurat, features = "Macrophage_score",group.by = "celltype",pt.size=0) 
 Seurat::VlnPlot(seurat, features = "DC_score",group.by = "celltype",pt.size=0)
+
+
+##增加P值的方法
+#参考https://www.biostars.org/p/458261/
+#似乎就直接对score进行T检验？？
+vp_case1 <- function(gene_signature, file_name, test_sign, y_max){
+  plot_case1 <- function(signature){
+    VlnPlot(seurat, features = signature,
+            pt.size = 0.1, 
+            group.by = "orig.ident2", 
+            y.max = y_max, # add the y-axis maximum value - otherwise p-value hidden
+    ) + ggpubr::stat_compare_means(comparisons = test_sign, label = "p.signif")
+  }
+  purrr::map(gene_signature, plot_case1) %>% cowplot::plot_grid(plotlist = .)
+  file_name <- paste0(file_name, "_r.png")
+  ggsave(file_name, width = 14, height = 8)
+}
+comparisons <- list(c("BD", "HC"))
+gene_sig <- c("S.Score")
+vp_case1(gene_signature = gene_sig, file_name = "gene_sig", test_sign = comparisons, y_max = 7)
+
