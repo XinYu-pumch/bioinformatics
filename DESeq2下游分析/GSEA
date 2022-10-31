@@ -228,3 +228,34 @@ a <- GSEA_result_2[match(ipn,GSEA_result_2$pathway),,drop=T]
 t <- raw_data[match(pathway_list[["Cytokine-cytokine receptor interaction"]],
                     raw_data$gene_name),,drop=T]
 write.csv(t,file="t.csv")
+
+##完全自定义GSEA
+library(msigdbr)
+library(fgsea)
+library(tibble)
+m_df<- msigdbr(species = "Homo sapiens") 
+fgsea_sets<- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+m_df <- as.data.frame(m_df)
+
+#
+tt <- m_df %>% dplyr::filter(.,grepl("APOPTOSIS",gs_name))
+tt <- m_df %>% dplyr::filter(gs_name %in% c("REACTOME_CELLULAR_SENESCENCE",
+                                            "REACTOME_DNA_DAMAGE_TELOMERE_STRESS_INDUCED_SENESCENCE",
+                                            "GO_CELLULAR_SENESCENCE","HALLMARK_APOPTOSIS")) %>% dplyr::arrange(gs_name)
+TERM2GENE=data.frame(term=tt$gs_name,symbol=tt$gene_symbol)
+
+
+#Treg_DEG,Naive_T_DEG,T_memory_DEG,IFN_induced_CD4_T_DEG
+
+GSEA_2 <- data.frame(gene=rownames(Naive_T_DEG),logFc=Naive_T_DEG$avg_logFC)
+#GSEA_2 <- data.frame(gene=DiffEG_CD4$symbol,logFc=DiffEG_CD4$logFC)
+GSEA_2 <- na.omit(GSEA_2[order(GSEA_2$logFc,decreasing= T),])
+GSEA_2 <- deframe(GSEA_2)
+Naive_T_GSEA <- GSEA(geneList=GSEA_2, 
+                                 TERM2GENE=TERM2GENE,
+                                 pvalueCutoff = 1,
+                                 nPerm        = 1000,
+                                 minGSSize    = 0,
+                                 maxGSSize = 500)
+test <- Naive_T_GSEA@result
+enrichplot::gseaplot2(Naive_T_GSEA, "HALLMARK_APOPTOSIS", color = "firebrick", rel_heights=c(1, .2, .6))
