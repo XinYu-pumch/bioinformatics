@@ -1,0 +1,56 @@
+#参考https://www.metaboanalyst.ca/docs/RTutorial.xhtml
+
+#注意需要定义一下一个全局函数，否则可能有bug
+#参见https://github.com/xia-lab/MetaboAnalystR/issues/224
+tem <- function (data, ..., level = 1) 
+{
+  require(plyr)
+  parts <- lapply(data, reshape2::melt, level = level + 1, ...)
+  result <- rbind.fill(parts)
+  names <- names(data) %||% seq_along(data)
+  lengths <- vapply(parts, nrow, integer(1))
+  labels <- rep(names, lengths)
+  label_var <- attr(data, "varname") %||% paste("L", level, 
+                                                sep = "")
+  result[[label_var]] <- labels
+  result
+}
+environment(tem) <- asNamespace("MetaboAnalystR")
+assignInNamespace("melt.list", tem, ns = asNamespace("MetaboAnalystR"))
+
+#library(MetaboAnalystR)
+###首先根据表达矩阵分析差异代谢物
+##注意矩阵的格式，第一行是c("SAMPLE","BD1","BD2","HC1","HC2"),第二行是c("LABEL","BD","BD","HC","HC")，第三行起是表达矩阵c("100.0127__4.651",1,2,3,4)，下略
+##BD和HC谁在前，并不影响log2FC，本质是看mSet[["dataSet"]][["cls"]]，第一个level除以第二个level
+##阴阳离子分开，或者合并分析，似乎无影响
+remove(mSet)
+mSet<-InitDataObjects("pktable", "mummichog", FALSE)
+mSet<-SetPeakFormat(mSet, "pvalue")
+mSet<-UpdateInstrumentParameters(mSet, 10.0, "positive", "yes", 0.02)
+mSet<-SetRTincluded(mSet, "seconds")
+mSet<-Read.TextData(mSet, "/Users/yuxin/Nutstore Files/近期的任务 2-7月/BD代谢组学原结果/metaboanalyst/1st_metabolism_all_pos2.csv", "colu", "disc");
+mSet<-SanityCheckMummichogData(mSet)
+mSet<-ReplaceMin(mSet);
+mSet<-SanityCheckMummichogData(mSet)
+mSet<-FilterVariable(mSet, "none", "F", 25)
+mSet<-PreparePrenormData(mSet)
+mSet<-Normalization(mSet, "NULL", "LogNorm", "MeanCenter", ratio=FALSE, ratioNum=20) #应该只需要log话即可，MeanCenter与否不太影响结果
+#mSet<-Normalization(mSet, "NULL", "LogNorm", "NULL", ratio=FALSE, ratioNum=20)
+mSet<-Ttests.Anal(mSet, F, 0.25, FALSE, TRUE) ##此时默认文件夹会有一个名字为 paste("mummichog_input_", Sys.Date(), ".txt")的txt文件，基于此去分析代谢通路
+cmSet<-Convert2Mummichog(mSet, rt=TRUE) 
+
+#开始分析通路
+mSet<-MetaboAnalystR::InitDataObjects("mass_all", "mummichog", FALSE)
+#SetPeakFormat("mprt")
+mSet<-UpdateInstrumentParameters(mSet, 5, "negative");
+mSet<-Read.PeakListData(mSet, paste0("mummichog_input_", Sys.Date(), ".txt")); ##载入前一步得到的list
+mSet<-SanityCheckMummichogData(mSet)
+mSet<-SetPeakEnrichMethod(mSet, "integ", version="v2") #
+mSet<-SetPeakEnrichMethod(mSet, "gsea", version="v2")
+# Please set the appropriate p value according to your data
+mSet<-SetMummichogPval(mSet, 1) #此处可修改
+mSet2<-PerformPSEA(mSet, "hsa_kegg", "current", 3 , 100)
+mSet3<-PerformPSEA(mSet, "hsa_mfn", "current", permNum =100)
+PlotPeaks2Paths(mSet3, "peaks_to_paths_", "png",144)
+
+
