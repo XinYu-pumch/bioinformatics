@@ -1,0 +1,35 @@
+data <- raw_data %>%
+  tibble::column_to_rownames("gene_id") %>% dplyr::select(BD1:HC17)
+data <- data %>% mutate(mean=apply(.,1,mean)) %>% filter(mean>=1) %>% dplyr::select(-mean)
+
+sample <- data.frame(condition=c(rep("BD",16),rep("HC",16)),
+                     batch_1=c(rep("I",4),rep("II",4),rep("III",8),
+                               rep("I",4),rep("II",4),rep("III",8)))
+rownames(sample)<-c(paste("BD",1:16,sep=""),paste("HC",1:11,sep=""),paste("HC",13:17,sep=""))
+
+sample <- sample[match(colnames(data), rownames(sample)),, drop=F]
+sample$condition <- factor(sample$condition,levels = c("HC","BD"))
+sample$batch_1 <- as.factor(sample$batch_1)
+sample$batch_2 <- as.factor(sample$batch_2)
+
+ddsFullCountTable <- DESeqDataSetFromMatrix(countData = data,
+                                            colData = sample,  
+                                            design = ~condition) #可在此处添加batch列
+dds <- DESeq(ddsFullCountTable)
+
+dat  <- counts(dds, normalized = TRUE)
+idx  <- rowMeans(dat) > 0
+dat  <- dat[idx, ]
+mod  <- model.matrix(~ condition, colData(dds))
+mod0 <- model.matrix(~   1, colData(dds))
+svseq <- sva::svaseq(dat, mod, mod0, n.sv = 2)
+
+ddssva <- dds
+ddssva$SV1 <- svseq$sv[,1]
+ddssva$SV2 <- svseq$sv[,2]
+design(ddssva) <- ~ SV1 + SV2 + condition
+
+dds <- DESeq(ddssva)
+res <- as.data.frame(results(dds)) %>% tibble::rownames_to_column("gene_id")
+res_combined <- merge(res,raw_data,by="gene_id")
+res_padj<-res_combined %>% filter(gene_biotype=="protein_coding")
