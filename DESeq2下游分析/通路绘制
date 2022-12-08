@@ -1,0 +1,3 @@
+library("SBGNview")
+#装此包需要系统装librsvg，直接brew install librsvg可能无法安装；故需要手动brew install其所有依赖包，大约数十个。。。
+
