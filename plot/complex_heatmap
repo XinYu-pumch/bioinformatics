@@ -63,6 +63,21 @@ ComplexHeatmap::Heatmap(na.omit(a),row_names_gp = gpar(fontsize = 6)
                         cluster_rows = F,
                         row_order=rank$marker,
                         split=c(rep("A", 10),rep("B", 10)),)
+                        
 
-
+#新方案，直接从低到高地配色
+ComplexHeatmap::Heatmap(a,row_names_gp = gpar(fontsize = 6)
+                        ,column_names_gp = gpar(fontsize = 8),
+                        use_raster =F,
+                        name = "Exp",
+                        col = circlize::colorRamp2(c(min(a), 1, max(a)), c("cornflowerblue", "white", "red")),
+                        heatmap_legend_param = list(at = c(min(a), 1, max(a))),
+                        show_row_dend = FALSE,
+                        #column_split = 2,
+                        top_annotation =HeatmapAnnotation(df=sample_ch['condition'],
+                                                          col = list(type =c("BD"="red","HC"="navy"))),
+                        show_row_names = T,
+                        cluster_columns = F,
+                        cluster_rows = F,
+                        row_order=rank$gene_name)
 
