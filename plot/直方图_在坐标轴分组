@@ -1,0 +1,39 @@
+neu_deg <- read.csv("/Users/yuxin/Nutstore Files/近期的任务 2-7月/FPP补图/neutrophil.csv")
+ion_channel <- read.csv("/Users/yuxin/Downloads/bioinformatics/ion_channel_HGNC.csv",header=F) %>%
+  .[-c(1,2),]
+colnames(ion_channel) <- read.csv("/Users/yuxin/Downloads/bioinformatics/ion_channel_HGNC.csv",header=F) %>% .[2,]
+ion_channel <- ion_channel %>% dplyr::mutate(gene_name=`Approved symbol` )
+
+length(unique(ion_channel$Group))
+ion_channel_to_plot <- neu_deg %>% filter(gene_name %in% ion_channel$`Approved symbol` ) %>%
+  merge(.,ion_channel,by="gene_name") %>% dplyr::select(gene_name,baseMean,log2FoldChange,pvalue,padj,Group) %>% 
+  filter(abs(padj) >= 0) %>% arrange(Group,pvalue) %>%
+  mutate(group2 = as.factor(Group),support=ifelse(log2FoldChange >= 0, -1*log(padj), log(padj))) %>%
+  tibble::rownames_to_column("rank2") %>%
+  mutate(rank=as.numeric(rank2))
+
+#ion_channel_to_plot <- ion_channel_to_plot[c(1:20),]
+sp <- factor(ion_channel_to_plot$gene_name,levels=rev(ion_channel_to_plot$gene_name))
+position_x <- -1*(1+abs(min(ion_channel_to_plot$support)))
+position_x <- -10
+p <- ggplot(data=ion_channel_to_plot,
+       aes(x=support,
+           y=sp,fill=log2FoldChange))+
+  geom_bar(stat = "identity",
+           width = 0.8)  +
+  scale_fill_gradient(low = "navy", high = "red")+
+  geom_vline(xintercept = log(0.05), color = 'black', linetype = 1, size = 0.5) + 
+  geom_vline(xintercept = -1*log(0.05), color = 'black', linetype = 1, size = 0.5)
+#p
+#参考https://cloud.tencent.com/developer/article/1901921
+for(groupi in unique(ion_channel_to_plot$group2)){
+  tt <- ion_channel_to_plot %>% filter(group2 == groupi)
+  position_y= (as.numeric(min(tt$rank))+as.numeric(max(tt$rank)))/2
+  p <- p+annotate(geom = "text",
+           x=position_x,y=nrow(ion_channel_to_plot)-position_y+1,label=groupi,angle=0)+
+    annotate(geom = "segment",
+             x=0,xend=20,y=1+nrow(ion_channel_to_plot)-as.numeric(min(tt$rank))+0.5,
+             yend=1+nrow(ion_channel_to_plot)-as.numeric(min(tt$rank))+0.5,
+             color="black")
+}
+p
