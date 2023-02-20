@@ -1,0 +1,63 @@
+library(Seurat)
+library(ggplot2)
+library(cowplot)
+library(patchwork)
+
+#将我整理后的rawdata文件夹（名字为：GSE128169_RAW）直接解压到工作目录
+##整理的本质是：1）把每个sample的3个文件放在同一个文件夹下 2）把gene.tsv改名成feature.csv
+a <- dir("GSE128169_RAW/")
+a <- a[-which(a=="SC277raw")] #SC277raw似乎不需要
+#b <- paste("GSE128169_RAW",a,sep="/")
+a #看一下a的顺序，是否是5个nc，然后再8个ssc
+
+#for循环读取
+sce_list <- list()
+for (diri in a){
+  dir2 <- paste("GSE128169_RAW",diri,sep="/")
+  sce.10x <- Read10X(data.dir = dir2)
+  sce_list[[diri]] <- CreateSeuratObject(counts = sce.10x, 
+                                         min.cells = 60, 
+                                         min.features = 200, 
+                                         project = diri) 
+}
+
+name1 <- c("nc1","nc2","nc3","nc4","nc5","ssc1","ssc2","ssc3","ssc4","ssc5","ssc6","ssc7","ssc8")
+name2 <- c("nc","nc","nc","nc","nc","ssc","ssc","ssc","ssc","ssc","ssc","ssc","ssc")
+for (i in 1:length(sce_list)){
+  sce_list[[i]]@meta.data$orig.ident <- name1[[i]]
+  sce_list[[i]]@meta.data$condition <- name2[[i]]
+}
+
+for (i in 1:length(sce_list)) {
+  sce_list[[i]][["percent.mt"]] <- PercentageFeatureSet(sce_list[[i]], pattern = "^MT-")
+  sce_list[[i]] <- subset(sce_list[[i]], subset = nFeature_RNA > 200 & nFeature_RNA < 4000 & percent.mt < 5)
+  sce_list[[i]] <- SCTransform(sce_list[[i]], vars.to.regress = "percent.mt", verbose = T)
+}
+features <- SelectIntegrationFeatures(object.list = sce_list, nfeatures = 3000)
+sce_list <- PrepSCTIntegration(object.list = sce_list, anchor.features = features)
+immune.anchors <- FindIntegrationAnchors(object.list = sce_list, normalization.method = "SCT",
+                                         anchor.features = features)
+immune.combined.sct <- IntegrateData(anchorset = immune.anchors, normalization.method = "SCT")
+
+
+immune.combined.sct <- RunPCA(immune.combined.sct, verbose = T)
+immune.combined.sct <- RunUMAP(immune.combined.sct, reduction = "pca", dims = 1:30)
+p1 <- DimPlot(immune.combined.sct, reduction = "umap", group.by = "stim")
+p2 <- DimPlot(immune.combined.sct, reduction = "umap", group.by = "seurat_annotations", label = TRUE,
+              repel = TRUE)
+p1 + p2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
