@@ -132,5 +132,8 @@ a <- stringr::str_extract_all("WokrTTddTTDD", "[A-Z]+")
 b <- a[[1]]
 c <- paste(b[1:length(b)],collapse = "")
 
+#合并不同长度的向量成为data.frame
+stat_total <- do.call(cbind, lapply(lapply(stat, unlist), "length<-", max(lengths(stat))))
+
 
 
