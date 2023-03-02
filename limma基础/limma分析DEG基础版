@@ -1,0 +1,86 @@
+#部分参考https://zhuanlan.zhihu.com/p/344426350
+##PMN受炎性刺激GSE35590
+library("limma")
+#GSE35590_gset <- getGEO("GSE35590", GSEMatrix =TRUE, AnnotGPL=FALSE)
+#saveRDS(GSE35590_gset,"GSE35590_gset.RDS")
+GSE35590_gset <- readRDS("GSE35590_gset.RDS")
+gset <- GSE35590_gset
+if (length(gset) > 1) idx <- grep("GPL5175", attr(gset, "names")) else idx <- 1
+gset <- gset[[idx]]
+fvarLabels(gset) <- make.names(fvarLabels(gset))
+ex <- exprs(gset)
+qx <- as.numeric(quantile(ex, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))
+LogC <- (qx[5] > 100) ||
+  (qx[6]-qx[1] > 50 && qx[2] > 0)
+if (LogC) { ex[which(ex <= 0)] <- NaN
+exprs(gset) <- log2(ex) }
+
+exp_raw <- exprs(gset) %>% as.data.frame(.) %>%
+  mutate(average=rowSums(.)/ncol(.)) %>%
+  tibble::rownames_to_column("ProbeName") 
+
+
+#注释信息从https://gemma.msl.ubc.ca/arrays/showArrayDesign.html?id=652获得了
+GPL5175_raw <- read.csv("GPL5175_noParents.an.csv") 
+GPL5175 <- GPL5175_raw %>% filter(GeneSymbols !="")
+length(unique(GPL5175$GeneSymbols))
+exp <- merge(GPL5175,exp_raw, by="ProbeName") %>% 
+  arrange(GeneSymbols,desc(average))  %>%
+  distinct(.,GeneSymbols,.keep_all=T) %>%
+  tibble::column_to_rownames("GeneSymbols") %>%
+  dplyr::select(GSM871322:GSM871337)  ##仅保留平均表达量最大的
+boxplot(exp)
+#a <- table(exp$GeneSymbols) %>% as.data.frame(.)
+#b <- exp %>% filter(GeneSymbols=="KLHDC10") %>% arrange(GeneSymbols,desc(average)) 
+
+sample <- gset@phenoData@data  %>% arrange(geo_accession) %>%
+  mutate(condition=as.factor(c("4h","0h","4h","6h","0h","6h","2h","0h","2h","4h","0h","2h",
+                               "4h","6h","2h","6h"))) %>% 
+  dplyr::select(condition)
+
+#a <- as.data.frame(table(sample$condition))
+metadata <- data.frame(row.names = colnames(exp))
+pca <- PCAtools::pca(as.matrix(na.omit(exp)), metadata = metadata, removeVar = 0.1)
+a <- pca[["rotated"]] %>% mutate(condition=sample$condition)
+p <- ggplot(data = a, aes(x = PC1, y = PC2)) +
+  geom_point(aes(color = condition), size = 3) +  #根据样本坐标绘制二维散点图
+  #scale_color_manual(values = c('orange', 'purple')) +  #自定义颜色
+  labs(x =  paste('PCA1:', pca[["variance"]][["PC1"]], '%'), y = paste('PCA2:', pca[["variance"]][["PC2"]], '%'), color = '') +
+  theme(panel.grid = element_blank(), panel.background = element_rect(color = 'black', fill = 'transparent'), 
+        legend.key = element_rect(fill = 'transparent')) + 
+  stat_ellipse(aes(fill = condition), geom = 'polygon', level = 0.95, alpha = 0.1, show.legend = FALSE) +
+  #scale_fill_manual(values = c('orange', 'purple')) +
+  geom_text(aes(PC1, PC2,label=rownames(a))) + theme_classic(base_size=8)
+p
+
+##差异分析，经过PCA，主要看0和2
+control_0 <- "0h"
+treat_0 <- "6h"
+design <- sample %>% filter(condition %in% c(control_0,treat_0)) %>%
+  mutate(control=ifelse(condition==control_0,1,0),
+         treat=ifelse(condition==treat_0,1,0)) %>% dplyr::select(-condition)
+
+contrast.matrix<-makeContrasts(paste0(c("treat","control"),collapse = "-"),levels = design)
+contrast.matrix
+exp_to_compare <- exp[,c(rownames(design))]
+
+##开始差异分析
+fit <- lmFit(exp_to_compare,design)
+##step2
+fit2 <- contrasts.fit(fit, contrast.matrix) ##这一步很重要，大家可以自行看看效果
+fit2 <- eBayes(fit2)  ## default no trend !!!
+##eBayes() with trend=TRUE
+##step3
+tempOutput = topTable(fit2, coef=1, n=Inf)
+res_combined <- merge(tempOutput %>% as.data.frame(.) %>% tibble::rownames_to_column("gene_name"),
+                      exp_to_compare %>% as.data.frame(.) %>% tibble::rownames_to_column("gene_name"),
+                      by="gene_name")
+a <- res_combined %>% filter(gene_name %in% c("TRPM2","CREB3L4"))
+
+
+#######
+
+
+
+
+
