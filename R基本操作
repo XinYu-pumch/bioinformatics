@@ -135,5 +135,11 @@ c <- paste(b[1:length(b)],collapse = "")
 #合并不同长度的向量成为data.frame
 stat_total <- do.call(cbind, lapply(lapply(stat, unlist), "length<-", max(lengths(stat))))
 
+##lapply对list进行编辑
+gene_to_select2 <- lapply(gene_to_select,function(x){
+  y <- x %>% merge(res_DEqMS,by="gene_name" ) %>% 
+    filter(compare.x==compare.y,logFC>=0) %>%
+    arrange(P.Value) %>% .[1:20,]
+})
 
 
