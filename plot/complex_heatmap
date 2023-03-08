@@ -80,4 +80,18 @@ ComplexHeatmap::Heatmap(a,row_names_gp = gpar(fontsize = 6)
                         cluster_columns = F,
                         cluster_rows = F,
                         row_order=rank$gene_name)
-
+                        
+#直接基于sample劈开，前提是注意gene_row的顺序                      
+ComplexHeatmap::Heatmap(b,row_names_gp = gpar(fontsize = 6)
+                        ,column_names_gp = gpar(fontsize = 8),
+                        use_raster =F,
+                        name = "Exp",
+                        col = c(colorRampPalette(colors = c("navy","white"))(length(bk)/2),colorRampPalette(colors = c("white","red"))(length(bk)/2)),
+                        show_row_dend = FALSE,
+                        #column_split = 2,
+                        top_annotation =HeatmapAnnotation(df=sample['condition']),
+                        show_row_names = T,
+                        cluster_columns = F,
+                        cluster_rows = F,
+                        split=factor(gene_to_select3$compare.x),
+                        column_split = sample$condition)
