@@ -1,0 +1,43 @@
+#bioconductor的问题在于，bioconductor version和Rversion 绑定，然而国内的三大源基本只链接了最新的版本（！？！）
+#如已有版本是R 4.0 + bioconductor 3.12; 但最新版本是R 4.2+bioconductor 3.16
+#那么清华大学源，在3.16版本下面有完整的bin/macosx等：https://mirrors.tuna.tsinghua.edu.cn/bioconductor/packages/3.16/bioc/bin/macosx/big-sur-arm64/contrib/4.2/
+#但在3.12版本下面没有bin/macosx：https://mirrors.tuna.tsinghua.edu.cn/bioconductor/packages/3.12
+#这就意味着bioconductor 3.12的所有包，清华大学源都没有！南大、中科大也一样。。
+
+#那么思路一：仍用bioconductor原始地址，但想办法让rstudio走系统代理——但不知道怎么让rstudio走系统代理；且频繁开全局代理略麻烦
+options(BioC_mirror="https://bioconductor.org")
+
+##思路二，在https://www.bioconductor.org/about/mirrors/  找一个有3.12版本的链接的mirror
+#如：https://bioconductor.riken.jp
+#但问题在于，一些新包可能bioconductor 3.12没有；但这不意味着R 4.0不能跑——所以面对这些包，需要自己手动来跑
+#如riken的3.12，共不到2000个包：https://bioconductor.riken.jp/packages/3.12/BiocViews.html#___Software
+#但riken的3.16，共2000+个包：https://bioconductor.riken.jp/packages/3.16/BiocViews.html#___Software
+#另外riken在日本，也许不一定比bioconductor.org本体更快；也有被墙的风险
+options(BioC_mirror="https://bioconductor.riken.jp")
+library("BiocManager")
+BiocManager::install("ComplexHeatmap",force = TRUE)
+
+#思路三：对于mac而言，定期（例如每2年更新R）
+#更新后，起码最新的R version的bioconductor包，国内三大源（清华、中科大、南大）是有的
+R.home()
+file.edit(file.path("~", ".Rprofile")) ##打开.Rprofile进行编辑
+
+#####.Rprofile的设置
+.libPaths("/Library/Frameworks/R.framework/Versions/Current/Resources/library") #不要无脑抄
+#options(BioC_mirror="http://mirrors.tuna.tsinghua.edu.cn/bioconductor")  #注意bioconductor后不要加横杠，option手动链接可自取
+#options(BioC_mirror="http://mirrors.nju.edu.cn/bioconductor")
+#options(BioC_mirror="https://bioconductor.riken.jp")
+options(download.file.method = 'libcurl')
+options(url.method='libcurl')
+#####.Rprofile的设置
+
+
+##另外一些常用函数
+BiocManager::version()
+readLines("https://bioconductor.org/config.yaml")
+#https://bioconductor.org/packages/3.12/bioc/bin/macosx/contrib/4.0/IRanges_2.24.1.tgz
+BiocManager::chooseBioCmirror()
+
+options(BioC_mirror="https://bioconductor.org")
+options(BioC_mirror="https://bioconductor.riken.jp")
+options()$BioC_mirror
