@@ -42,5 +42,5 @@ git config --global --unset http.proxy
 git config --global --unset https.proxy
 
 ##对于windows的所有vpn
-export http_proxy=http://127.0.0.1:10809
-export https_proxy=http://127.0.0.1:10809
+set http_proxy=http://127.0.0.1:10809
+set https_proxy=http://127.0.0.1:10809
