@@ -24,13 +24,12 @@ curl -vv https://www.google.com
  #windows+V2ray
 ###对于windows的git
 # socks5协议，1080端口修改成自己的本地代理端口
-git config –global http.proxy socks5://127.0.0.1:10808
-git config –global https.proxy socks5://127.0.0.1:10808
+git config –-global http.proxy socks5://127.0.0.1:10808
+git config –-global https.proxy socks5://127.0.0.1:10808
 # http协议，1081端口修改成自己的本地代理端口
-git config –global http.proxy http://127.0.0.1:10809
-git config –global https.proxy https://127.0.0.1:10809
-如果只是加速GITHUB ， 其他保持不变。 设置如下:
-
+git config –-global http.proxy http://127.0.0.1:10809
+git config –-global https.proxy https://127.0.0.1:10809
+#如果只是加速GITHUB ， 其他保持不变。 设置如下:
 # http协议
 git config –global http.https://github.com.proxy https://127.0.0.1:10809
 git config –global https.https://github.com.proxy https://127.0.0.1:10809
