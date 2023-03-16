@@ -41,3 +41,8 @@ BiocManager::chooseBioCmirror()
 options(BioC_mirror="https://bioconductor.org")
 options(BioC_mirror="https://bioconductor.riken.jp")
 options()$BioC_mirror
+
+
+
+#查看当前包的路径
+.libPaths()
