@@ -1,0 +1,116 @@
+#整体可以参考https://cloud.tencent.com/developer/article/1650547
+##以GSE27427为例
+library(GEOquery)
+library(limma)
+library(edgeR)
+library(tibble)
+library(dplyr)
+#@首先下载原始矩阵
+GSE27427_gset <- getGEO("GSE27427", GSEMatrix =TRUE, AnnotGPL=F) #有时网络不好，可以本地下载↓
+#试开URL’https://ftp.ncbi.nlm.nih.gov/geo/series/GSE27nnn/GSE27427/matrix/GSE27427_series_matrix.txt.gz
+Sys.setenv(VROOM_CONNECTION_SIZE=500072) #运行下一步如果有报错，则运行此步骤；VROOM_CONNECTION_SIZE应该还可以更高
+GSE65097_gset = getGEO(filename="/Users/yuxin/Downloads/bioinformatics/GSE65097_series_matrix.txt.gz",
+                       AnnotGPL=F,GSEMatrix =F) #似乎读取也有问题，还是以自动下载为主
+gset <- GSE27427_gset$GSE27427_series_matrix.txt.gz
+
+
+#清洗数据
+boxplot(data.frame(exprs(gset)),col="blue") ##先看是否需要标准.
+exp_tmp <- exprs(gset) %>% as.data.frame(.)
+#发现有负数，考虑如下情况：1）进行过 log 转化，正常2）没进行过 log 转化，可能存在错误数据，一般弃用，处理原始数据。3）有一半负值，代表进行了 z-score 等标准化，不能用于差异分析，应处理原始数据。
+#此处为情况I
+fvarLabels(gset) <- make.names(fvarLabels(gset))
+ex <- exprs(gset)
+qx <- as.numeric(quantile(ex, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))
+LogC <- (qx[5] > 100) ||
+  (qx[6]-qx[1] > 50 && qx[2] > 0)
+if (LogC) { ex[which(ex <= 0)] <- NaN
+exprs(gset) <- log2(ex) }
+boxplot(data.frame(exprs(gset)),col="blue") #看标准化结果
+
+exp_raw <- exprs(gset)
+exp_raw[which(exp_raw=="NaN")] <- 0
+exp_raw <- exp_raw %>% as.data.frame(.) %>%
+  mutate(average=rowSums(.)/ncol(.)) %>%
+  tibble::rownames_to_column("ID") 
+
+
+#看注释信息，一般在gset@featureData@data
+fd <- gset@featureData@data %>% mutate(sp=nchar(Symbol)) #一般fd和exp_raw的探针数要一一对应
+#GPL6106似乎探针和symbol一对一，不用清洗
+#a <- fd %>% mutate(sp=nchar(Symbol))
+#a <- fd %>% filter(Symbol=="TRPM2")
+#注释信息也可以通过 gset@annotation 查询,然后去ncbi上搜
+
+#注：对于GPL6106，不用清洗↓
+#清洗的目的：1）调出对应gene的探针2）整理对上多个gene的探针
+fd1 <- fd %>% mutate(sp=nchar(Symbol)) %>% filter(sp!=0) %>%
+  filter(.,!grepl(";",Symbol)) %>%
+  dplyr::select(ID,Symbol) #筛选出探针和gene_name中1对1者
+
+fd2_raw <- fd %>% mutate(sp=nchar(Symbol)) %>% filter(sp!=0) %>%
+  filter(.,grepl(";",Symbol)) %>%
+  dplyr::select(ID,Symbol) #筛选出探针和gene_name中1对多者
+#清洗fd2_raw，此步运算较慢
+fd2_tmp <- apply(fd2_raw,1,function(x){
+  y <- strsplit(x[2], ';', fixed=TRUE) %>% .[[1]]
+  a <- data.frame(Symbol=y) %>% mutate(ID=x[1])
+})
+fd2 <- do.call(rbind,fd2_tmp) %>% dplyr::select(ID,Symbol) %>% 
+  arrange(ID) %>% distinct(.,Symbol,.keep_all=T)
+fd_final <- rbind(fd1,fd2) #得到清洗后的数据
+#↑
+
+#GPL6106不用清洗，直接用即可
+fd_final <- fd %>% select(ID,Symbol,sp)
+
+##把exp_raw的探针和gene对应；重复的探针，取average最大值
+exp <- merge(fd_final,exp_raw,by="ID") %>% 
+  filter(sp!=0) %>%
+  arrange(Symbol,desc(average))  %>%
+  distinct(.,Symbol,.keep_all=T)  %>%
+  dplyr::select(-sp,-average,-ID) %>%
+  tibble::column_to_rownames("Symbol")
+#length(unique(exp$ID))
+
+###开始差异分析
+#分组信息在gset@phenoData@data里面
+sample_info_raw <- gset@phenoData@data
+unique(sample_info_raw$source_name_ch1) #看分类
+#构建分组矩阵
+sample_info <- sample_info_raw %>% mutate(condition=ifelse(source_name_ch1=="Neutrophils from SLE Patient","SLE_Neu",
+                                                           ifelse(source_name_ch1=="Neutrophils from Healthy control","HC_Neu","others"))) %>%
+  tibble::rownames_to_column("sp") %>%
+  tibble::column_to_rownames("geo_accession") %>%
+  dplyr::select(condition)
+#似乎source_name_ch1足以分类，不用精简，或者直接：
+sample_info <- sample_info_raw %>%
+  tibble::rownames_to_column("sp") %>%
+  tibble::column_to_rownames("geo_accession") %>%
+  mutate(condition=source_name_ch1) %>%
+  dplyr::select(condition)
+
+###想要比较哪两组，直接根据unique(sample_info$condition)里面的信息即可
+unique(sample_info$condition)
+control_0 <- "Neutrophils from Healthy control"
+treat_0 <- "Neutrophils from SLE Patient"
+design <- sample_info %>% filter(condition %in% c(control_0,treat_0)) %>%
+  mutate(control=ifelse(condition==control_0,1,0),
+         treat=ifelse(condition==treat_0,1,0)) %>% dplyr::select(-condition)
+
+contrast.matrix<-makeContrasts(paste0(c("treat","control"),collapse = "-"),levels = design)
+contrast.matrix
+exp_to_compare <- exp[,c(rownames(design))]
+
+##开始差异分析
+fit <- lmFit(exp_to_compare,design)
+##step2
+fit2 <- contrasts.fit(fit, contrast.matrix)   
+fit2 <- eBayes(fit2)  ## default no trend !!!
+##eBayes() with trend=TRUE
+##step3
+tempOutput = topTable(fit2, coef=1, n=Inf)
+res_combined <- merge(tempOutput %>% as.data.frame(.) %>% tibble::rownames_to_column("gene_name"),
+                      exp_to_compare %>% as.data.frame(.) %>% tibble::rownames_to_column("gene_name"),
+                      by="gene_name")  
+a <- res_combined %>% filter(gene_name %in% c("TRPM2","CREB3L4"))
