@@ -1,5 +1,63 @@
+##AOSD见GSE150996
+##是RNAseq数据
+AOSD_raw_data <- read.table("/Users/yuxin/Downloads/bioinformatics/GSE150996_processed_data_file.txt",header=T) %>%
+  tibble::column_to_rownames("Gene")
+
+AOSD_data <- round(AOSD_raw_data)
+
+sample <- data.frame(sample=colnames(AOSD_data),
+                     condition=factor(c(rep("HC",6),rep("AOSD",6)),levels=c("HC","AOSD")))
+
+ddsFullCountTable <- DESeqDataSetFromMatrix(countData = AOSD_data,
+                                            colData = sample,  
+                                            design = ~ condition) #可在此处添加batch列
+dds <- DESeq(ddsFullCountTable)
+res <- as.data.frame(results(dds)) %>% tibble::rownames_to_column("gene_name")
+write.csv(res,"GSE150996_AOSD.csv")
+#a <- res %>% filter(gene_name %in% c("MSR1"))
+
+##pSS忽略
+pSS_raw_data <- openxlsx::read.xlsx("/Users/yuxin/Downloads/bioinformatics/GSE194234_mRNA_Diff_gene.FPKM.xlsx")
+gene_length <- read.csv("gene_length.csv")
+gene_length <- gene_length[match(pSS_raw_data$gene_id,gene_length$gene_id),,drop=F]
+
+##RA忽略
+library(affy)
+data <- ReadAffy(celfile.path = "/Users/yuxin/Downloads/GSE93776_RAW")
+eset <- rma(data)
+a <- res %>% filter(.,grepl("IL",gene_name))
+
+###示例GSE35590，与本数据集无关
+GSE35590_gset <- readRDS("GSE35590_gset.RDS")
+gset <- GSE35590_gset
+if (length(gset) > 1) idx <- grep("GPL5175", attr(gset, "names")) else idx <- 1
+gset <- gset[[idx]]
+fvarLabels(gset) <- make.names(fvarLabels(gset))
+ex <- exprs(gset)
+qx <- as.numeric(quantile(ex, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))
+LogC <- (qx[5] > 100) ||
+  (qx[6]-qx[1] > 50 && qx[2] > 0)
+if (LogC) { ex[which(ex <= 0)] <- NaN
+exprs(gset) <- log2(ex) }
+exp_raw <- gset@assayData[["exprs"]]
+
+exp_raw <- exprs(gset) %>% as.data.frame(.) %>%
+  mutate(average=rowSums(.)/ncol(.)) %>%
+  tibble::rownames_to_column("ProbeName") 
+
+GPL5175_raw <- read.csv("GPL5175_noParents.an.csv") 
+GPL5175 <- GPL5175_raw %>% filter(GeneSymbols !="")
+
+exp <- merge(GPL5175,exp_raw, by="ProbeName") %>% 
+  arrange(GeneSymbols,desc(average))  %>%
+  distinct(.,GeneSymbols,.keep_all=T) %>%
+  tibble::column_to_rownames("GeneSymbols") %>%
+  dplyr::select(GSM871322:GSM871337) 
+
+
+################################################################开始
 #整体可以参考https://cloud.tencent.com/developer/article/1650547
-##以GSE27427为例
+##以SLE_GSE27427为例
 library(GEOquery)
 library(limma)
 library(edgeR)
@@ -62,7 +120,7 @@ fd_final <- rbind(fd1,fd2) #得到清洗后的数据
 #↑
 
 #GPL6106不用清洗，直接用即可
-fd_final <- fd %>% select(ID,Symbol,sp)
+fd_final <- fd %>% dplyr::select(ID,Symbol,sp)
 
 ##把exp_raw的探针和gene对应；重复的探针，取average最大值
 exp <- merge(fd_final,exp_raw,by="ID") %>% 
@@ -114,3 +172,295 @@ res_combined <- merge(tempOutput %>% as.data.frame(.) %>% tibble::rownames_to_co
                       exp_to_compare %>% as.data.frame(.) %>% tibble::rownames_to_column("gene_name"),
                       by="gene_name")  
 a <- res_combined %>% filter(gene_name %in% c("TRPM2","CREB3L4"))
+write.csv(res_combined,"res_combined_GSE27427.csv")
+
+
+##GSE26975
+GSE26975_gset <- getGEO("GSE26975", GSEMatrix =TRUE, AnnotGPL=F) #有时网络不好，可以本地下载↓
+#试开URL’https://ftp.ncbi.nlm.nih.gov/geo/series/GSE27nnn/GSE27427/matrix/GSE27427_series_matrix.txt.gz
+Sys.setenv(VROOM_CONNECTION_SIZE=500072) #运行下一步如果有报错，则运行此步骤；VROOM_CONNECTION_SIZE应该还可以更高
+GSE65097_gset = getGEO(filename="/Users/yuxin/Downloads/bioinformatics/GSE65097_series_matrix.txt.gz",
+                       AnnotGPL=F,GSEMatrix =F) #似乎读取也有问题，还是以自动下载为主
+gset <- GSE26975_gset$GSE26975_series_matrix.txt.gz
+
+
+#清洗数据
+boxplot(data.frame(exprs(gset)),col="blue") ##先看是否需要标准.
+exp_tmp <- exprs(gset) %>% as.data.frame(.)
+min(exp_tmp)
+max(exp_tmp) #发现不用清洗
+exp_raw <- exprs(gset)
+exp_raw[which(exp_raw=="NaN")] <- 0
+exp_raw <- exp_raw %>% as.data.frame(.) %>%
+  mutate(average=rowSums(.)/ncol(.)) %>%
+  tibble::rownames_to_column("ID") 
+
+
+#看注释信息，一般在gset@featureData@data
+fd <- gset@featureData@data %>% mutate(sp=nchar(ORF)) #一般fd和exp_raw的探针数要一一对应
+fd_final <- fd %>% select(ID,ORF,sp)
+
+##把exp_raw的探针和gene对应；重复的探针，取average最大值
+exp <- merge(fd_final,exp_raw,by="ID") %>% 
+  filter(sp!=0) %>%
+  arrange(ORF,desc(average))  %>%
+  distinct(.,ORF,.keep_all=T)  %>%
+  dplyr::select(-sp,-average,-ID) %>%
+  tibble::column_to_rownames("ORF")
+#length(unique(exp$ID))
+
+###开始差异分析
+#分组信息在gset@phenoData@data里面
+sample_info_raw <- gset@phenoData@data
+unique(sample_info_raw$source_name_ch1) #看分类
+#构建分组矩阵
+sample_info <- sample_info_raw %>%
+  tibble::rownames_to_column("sp") %>%
+  tibble::column_to_rownames("geo_accession") %>%
+  mutate(condition=source_name_ch1) %>%
+  dplyr::select(condition)
+
+###想要比较哪两组，直接根据unique(sample_info$condition)里面的信息即可
+unique(sample_info$condition)
+control_0 <- "Control neutrophil from healthy human"
+treat_0 <- "Neutrophil from lupus patient"
+design <- sample_info %>% filter(condition %in% c(control_0,treat_0)) %>%
+  mutate(control=ifelse(condition==control_0,1,0),
+         treat=ifelse(condition==treat_0,1,0)) %>% dplyr::select(-condition)
+contrast.matrix<-makeContrasts(paste0(c("treat","control"),collapse = "-"),levels = design)
+contrast.matrix
+exp_to_compare <- exp[,c(rownames(design))]
+
+##开始差异分析
+fit <- lmFit(exp_to_compare,design)
+##step2
+fit2 <- contrasts.fit(fit, contrast.matrix)   
+fit2 <- eBayes(fit2)  ## default no trend !!!
+##eBayes() with trend=TRUE
+##step3
+tempOutput = topTable(fit2, coef=1, n=Inf)
+res_combined <- merge(tempOutput %>% as.data.frame(.) %>% tibble::rownames_to_column("gene_name"),
+                      exp_to_compare %>% as.data.frame(.) %>% tibble::rownames_to_column("gene_name"),
+                      by="gene_name")  
+a <- res_combined %>% filter(gene_name %in% c("TRPM2","CREB3L4"))
+write.csv(res_combined,"res_combined_GSE26975.csv")
+
+###GSE26975
+GSE26975_gset <- getGEO("GSE26975", GSEMatrix =TRUE, AnnotGPL=F) #有时网络不好，可以本地下载↓
+gset <- GSE26975_gset$GSE26975_series_matrix.txt.gz
+#清洗数据
+boxplot(data.frame(exprs(gset)),col="blue") ##先看是否需要标准.
+exp_tmp <- exprs(gset) %>% as.data.frame(.)
+min(exp_tmp)
+max(exp_tmp) #发现不需要清洗
+exp_raw <- exprs(gset)
+exp_raw[which(exp_raw=="NaN")] <- 0
+exp_raw <- exp_raw %>% as.data.frame(.) %>%
+  mutate(average=rowSums(.)/ncol(.)) %>%
+  tibble::rownames_to_column("ID") 
+
+
+#看注释信息，一般在gset@featureData@data
+fd <- gset@featureData@data %>% mutate(sp=nchar(ORF)) #一般fd和exp_raw的探针数要一一对应
+fd_final <- fd %>% dplyr::select(ID,ORF,sp)
+
+##把exp_raw的探针和gene对应；重复的探针，取average最大值
+exp <- merge(fd_final,exp_raw,by="ID") %>% 
+  filter(sp!=0) %>%
+  arrange(ORF,desc(average))  %>%
+  distinct(.,ORF,.keep_all=T)  %>%
+  dplyr::select(-sp,-average,-ID) %>%
+  tibble::column_to_rownames("ORF")
+#length(unique(exp$ID))
+
+###开始差异分析
+#分组信息在gset@phenoData@data里面
+sample_info_raw <- gset@phenoData@data
+unique(sample_info_raw$source_name_ch1) #看分类
+#构建分组矩阵
+sample_info <- sample_info_raw %>%
+  tibble::rownames_to_column("sp") %>%
+  tibble::column_to_rownames("geo_accession") %>%
+  mutate(condition=source_name_ch1) %>%
+  dplyr::select(condition)
+
+###想要比较哪两组，直接根据unique(sample_info$condition)里面的信息即可
+unique(sample_info$condition)
+control_0 <- "Control neutrophil from healthy human"
+treat_0 <- "Neutrophil from lupus patient"
+design <- sample_info %>% filter(condition %in% c(control_0,treat_0)) %>%
+  mutate(control=ifelse(condition==control_0,1,0),
+         treat=ifelse(condition==treat_0,1,0)) %>% dplyr::select(-condition)
+contrast.matrix<-makeContrasts(paste0(c("treat","control"),collapse = "-"),levels = design)
+contrast.matrix
+exp_to_compare <- exp[,c(rownames(design))]
+
+##开始差异分析
+fit <- lmFit(exp_to_compare,design)
+##step2
+fit2 <- contrasts.fit(fit, contrast.matrix)   
+fit2 <- eBayes(fit2)  ## default no trend !!!
+##eBayes() with trend=TRUE
+##step3
+tempOutput = topTable(fit2, coef=1, n=Inf)
+res_combined <- merge(tempOutput %>% as.data.frame(.) %>% tibble::rownames_to_column("gene_name"),
+                      exp_to_compare %>% as.data.frame(.) %>% tibble::rownames_to_column("gene_name"),
+                      by="gene_name")  
+a <- res_combined %>% filter(gene_name %in% c("TRPM2","CREB3L4"))
+write.csv(res_combined,"res_combined_GSE26975.csv")
+
+####GSE116899,是RNAseq结果
+library(DESeq2)
+GSE116899_gset <- read.table("/Users/yuxin/Downloads/bioinformatics/GSE116899_RAW/GSE116899_ra-neut-counts-EnsembIDs-GRCh37.p10.txt",
+                            header = T,sep = '\t',row.names = 1,comment.char = "#") %>%
+  dplyr::select(-Chr:-Length)
+GSE116899_gset_soft_raw <- getGEO(filename='GSE116899_RAW/GSE116899_family.soft')
+GSE116899_gset_soft <- as.data.frame(do.call(rbind,lapply(GSE116899_gset_soft_raw@gsms,function(x){
+  a1 <- c(x@header$title,x@header$characteristics_ch1)
+}))) %>% tibble::rownames_to_column("sp") %>% tibble::column_to_rownames("V1") %>%
+  mutate(type=V2,condition=factor(V7,levels=c("phenotype: Healthy","phenotype: Rheumatoid arthritis"))) %>% dplyr::select(type,condition)
+colnames(GSE116899_gset) <- rownames(GSE116899_gset_soft)
+
+sample_info <- GSE116899_gset_soft %>% dplyr::filter(type == "tissue: Blood") %>% arrange(condition)
+GSE116899_gset2 <- GSE116899_gset[,c(rownames(sample_info))]
+
+ddsFullCountTable <- DESeqDataSetFromMatrix(countData = GSE116899_gset2,
+                                            colData = sample_info,  
+                                            design = ~ condition) #可在此处添加batch列
+dds <- DESeq(ddsFullCountTable)
+res <- as.data.frame(results(dds)) %>% tibble::rownames_to_column("gene_name")
+res_combined <- merge(bitr(res$gene_name, fromType = "ENSEMBL",toType = "SYMBOL",OrgDb = org.Hs.eg.db) %>% 
+                        mutate(gene_name=ENSEMBL),
+                      res,by="gene_name") %>%
+  dplyr::select(-gene_name,-ENSEMBL) %>%
+  mutate(gene_name=SYMBOL) %>% dplyr::select(-SYMBOL)
+a <- res_combined %>% filter(gene_name=="TRPM2")
+write.csv(res_combined,"res_combined_GSE116899_RA.csv")
+
+
+####GSE18885 AAV
+GSE18885_raw <- read.table("/Users/yuxin/Downloads/bioinformatics/GSE18885/GSE18885_Non-normalized.txt",
+                       header = T,sep = '\t',comment.char = "#")
+GSE18885_raw_PMN <- GSE18885_raw[seq(1,nrow(GSE18885_raw),2),] 
+colnames(GSE18885_raw_PMN) <- GSE18885_raw_PMN[1,]
+GSE18885_raw_PMN <- GSE18885_raw_PMN[-1,-1]
+a <- data.frame(col = colnames(GSE18885_raw_PMN)) %>% dplyr::filter(.,!grepl("Detection|SAMPLE 35 PMN",col))
+GSE18885_raw_PMN <- GSE18885_raw_PMN[,a$col]
+GSE18885_raw_PMN <- apply(GSE18885_raw_PMN,2,as.numeric)
+rownames(GSE18885_raw_PMN) <- GSE18885_raw %>% dplyr::filter(ID_REF !="") %>% .$ID_REF
+exp_raw <- log2(GSE18885_raw_PMN) %>% 
+  as.data.frame(.) %>% 
+  mutate(average=rowSums(.)/ncol(.))  %>%
+  tibble::rownames_to_column("ID_REF")
+  
+
+
+
+#下载注释信息
+GPL6104 <- read.csv("/Users/yuxin/Downloads/bioinformatics/GSE18885/GPL6104-11576.txt",
+                           header = T,sep = '\t',comment.char = "#") %>% 
+  mutate(ID_REF=ID) %>%
+  dplyr::select(ID_REF,Symbol)
+
+
+#
+exp <- merge(GPL6104, exp_raw, by="ID_REF") %>% 
+  arrange(Symbol,desc(average)) %>% 
+  distinct(.,Symbol,.keep_all=T) %>%
+  dplyr::select(-average,-ID_REF) %>%
+  tibble::column_to_rownames("Symbol")
+
+#读取分组信息
+GSE18885_soft_raw <- getGEO(filename='/Users/yuxin/Downloads/bioinformatics/GSE18885/GSE18885_family.soft.gz')
+GSE18885_soft <- as.data.frame(do.call(rbind,lapply(GSE18885_soft_raw@gsms,function(x){
+  a1 <- c(x@header$title,x@header$source_name_ch1)
+}))) %>% tibble::remove_rownames(.) %>% tibble::column_to_rownames("V1") %>%
+  mutate(condition=V2) %>% 
+  dplyr::select(condition)
+sample_info <- GSE18885_soft %>% 
+  dplyr::filter(condition %in% c("PMN_Normal Control","PMN_Wegener's granulomatosis")) %>%
+  dplyr::arrange(condition)
+exp <- exp[,rownames(sample_info)]
+##
+unique(sample_info$condition)
+control_0 <- "PMN_Normal Control"
+treat_0 <- "PMN_Wegener's granulomatosis"
+design <- sample_info %>% filter(condition %in% c(control_0,treat_0)) %>%
+  mutate(control=ifelse(condition==control_0,1,0),
+         treat=ifelse(condition==treat_0,1,0)) %>% dplyr::select(-condition)
+contrast.matrix<-makeContrasts(paste0(c("treat","control"),collapse = "-"),levels = design)
+contrast.matrix
+exp_to_compare <- exp[,c(rownames(design))]
+
+##开始差异分析
+fit <- lmFit(exp_to_compare,design)
+##step2
+fit2 <- contrasts.fit(fit, contrast.matrix)   
+fit2 <- eBayes(fit2)  ## default no trend !!!
+##eBayes() with trend=TRUE
+##step3
+tempOutput = topTable(fit2, coef=1, n=Inf)
+res_combined <- merge(tempOutput %>% as.data.frame(.) %>% tibble::rownames_to_column("gene_name"),
+                      exp_to_compare %>% as.data.frame(.) %>% tibble::rownames_to_column("gene_name"),
+                      by="gene_name") %>% dplyr::select(gene_name:B)
+a <- res_combined %>% filter(gene_name %in% c("TRPM2","CREB3L4"))
+write.csv(res_combined,"res_combined_GSE18885_AAV.csv")
+
+
+
+
+#####整体
+#/Users/yuxin/Downloads/bioinformatics/TRPM2/Behcet's disease_res_combined_E_MTAB_2713.csv
+
+Neu_AID_list <- list(AAV_E_MTAB_2713 = read.csv("/Users/yuxin/Downloads/bioinformatics/TRPM2/ANCA-associated vasculitis_res_combined_E_MTAB_2713.csv",row.names = 1) %>% 
+                  dplyr::select(gene_name:B) %>% mutate(type="AAV_E_MTAB_2713"),
+                BD_E_MTAB_2713 = read.csv("/Users/yuxin/Downloads/bioinformatics/TRPM2/Behcet's disease_res_combined_E_MTAB_2713.csv",row.names = 1) %>% 
+                  dplyr::select(gene_name:B) %>% mutate(type="BD_E_MTAB_2713"),
+                IBD_E_MTAB_2713 = read.csv("/Users/yuxin/Downloads/bioinformatics/TRPM2/inflammatory bowel disease_res_combined_E_MTAB_2713.csv",row.names = 1) %>% 
+                  dplyr::select(gene_name:B) %>% mutate(type="IBD_E_MTAB_2713"),
+                SLE_E_MTAB_145 = read.csv("/Users/yuxin/Downloads/bioinformatics/TRPM2/res_combined_E_MTAB_145_SLE.csv",row.names = 1) %>% 
+                  dplyr::select(gene_name:B) %>% mutate(type="SLE_E_MTAB_145"),
+                AAV_GSE18885 = read.csv("/Users/yuxin/Downloads/bioinformatics/TRPM2/res_combined_GSE18885_AAV.csv",row.names = 1) %>% 
+                  dplyr::select(gene_name:B) %>% mutate(type="AAV_GSE18885"),
+                SLE_GSE26975 = read.csv("/Users/yuxin/Downloads/bioinformatics/TRPM2/res_combined_GSE26975_SLE.csv",row.names = 1) %>% 
+                  dplyr::select(gene_name:B) %>% mutate(type="SLE_GSE26975"),
+                SLE_GSE27427 = read.csv("/Users/yuxin/Downloads/bioinformatics/TRPM2/res_combined_GSE27427_SLE.csv",row.names = 1) %>% 
+                  dplyr::select(gene_name:B) %>% mutate(type="SLE_GSE27427"),
+                RA_GSE116899 = read.csv("/Users/yuxin/Downloads/bioinformatics/TRPM2/res_combined_GSE116899_RA.csv",row.names = 1) %>% 
+                  mutate(logFC=log2FoldChange,AveExpr=baseMean,t="no",P.Value=pvalue,adj.P.Val=padj,B="no") %>% 
+                  dplyr::select(gene_name,logFC:B) %>% mutate(type="RA_GSE116899"),
+                SLE_E_MTAB_2713 = read.csv("/Users/yuxin/Downloads/bioinformatics/TRPM2/systemic lupus erythematosus_res_combined_E_MTAB_2713.csv",row.names = 1) %>% 
+                  dplyr::select(gene_name:B) %>% mutate(type="SLE_E_MTAB_2713"),
+                AOSD_GSE150996.csv = read.csv("/Users/yuxin/Downloads/bioinformatics/TRPM2/GSE150996_AOSD.csv",row.names = 1) %>% 
+                  mutate(logFC=log2FoldChange,AveExpr=baseMean,t="no",P.Value=pvalue,adj.P.Val=padj,B="no") %>% 
+                  dplyr::select(gene_name,logFC:B) %>% mutate(type="AOSD_GSE150996"))
+Neu_AID <- do.call(rbind,Neu_AID_list)
+a <- Neu_AID %>% filter(gene_name =="TRPM2",adj.P.Val<=0.05) %>%
+  arrange(logFC)
+sp <- a$type
+
+library(ggplot2)
+p<-ggplot(a, aes(x=factor(type,levels=sp), 
+                 y=logFC,fill=-1*log(adj.P.Val))) +
+  geom_bar(stat="identity", position=position_dodge(),
+           color="black", width=.8) +scale_fill_gradient(low = "navy", high = "red")+
+  theme_bw()+
+  scale_y_continuous(expand=c(0,0))+
+  coord_cartesian(ylim = c(-4, 4))+
+  coord_flip()+
+  theme(axis.text.x = element_text(size = 14, color = "black"))+##设置x轴字体大小
+  theme(axis.text.y = element_text(size = 14, color = "black"))+##设置y轴字体大小
+  theme(title=element_text(size=13))+#设置标题字体大小
+  theme_bw()  +
+  geom_hline(yintercept = log(0.05), color = 'gray', linetype = 2, size = 0.5) + 
+  geom_hline(yintercept = -1*log(0.05), color = 'gray', linetype = 2, size = 0.5)
+p #5*6
+
+a2 <- Neu_AID %>% filter(gene_name =="TRPM2") %>%
+  arrange(logFC) %>% dplyr::select(type,logFC,P.Value,adj.P.Val)
+write.csv(a2,"TRPM2.csv")
+writexl::write_xlsx(a2,"TRPM2.xlsx")
+
+
+
+
