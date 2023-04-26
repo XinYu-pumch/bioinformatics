@@ -1,0 +1,181 @@
+library(dplyr)
+library(tidyr)
+library(GEOquery)
+library(limma)
+library(edgeR)
+library(tibble)
+library(BiocManager)
+#BiocManager::install("dplyr",force=T)
+#install.packages("dplyr")
+#E-MTAB-145
+E_MTAB_145_sample_raw <- read.csv("/Users/yuxin/Downloads/bioinformatics/E-MTAB-145/E-MTAB-145.sdrf.txt",header = TRUE,sep="\t")
+unique(E_MTAB_145_sample_raw$Characteristics..CellType..1)
+unique(E_MTAB_145_sample_raw$Factor.Value.DISEASESTATE.)
+E_MTAB_145_sample <- E_MTAB_145_sample_raw %>%
+  dplyr::filter(Characteristics..CellType..1=="neutrophil") %>% dplyr::select(Source.Name,Factor.Value.DISEASESTATE.)
+
+##E-MTAB-145已有标准化结果，下载即可
+exp_raw <- read.csv("/Users/yuxin/Downloads/bioinformatics/E-MTAB-145/E-MTAB-145_processed/CD16_norm.txt",header = TRUE,sep="\t") %>%
+  .[-1,] %>% tibble::rownames_to_column("sp") %>% dplyr::select(-sp) %>%
+  tibble::column_to_rownames("Normalization.REF")
+exp_colnames <- data.frame(raw= colnames(exp_raw)) %>% separate(.,raw,into=c("new","type"),sep=".CD16")
+colnames(exp_raw) <- exp_colnames$new
+exp_raw <- na.omit(exp_raw)
+exp <- apply(exp_raw,2,as.numeric)
+rownames(exp) <- rownames(exp_raw)
+boxplot(exp,col="blue") #看标准化结果
+
+##
+#####发现需要注释，信息由A_MEXP_1152提供
+#BiocManager::install("AnnotationHub",force=T)
+library(org.Hs.eg.db)
+library(clusterProfiler)
+A_MEXP_1152 <- read.csv("/Users/yuxin/Downloads/bioinformatics/E-MTAB-145/A-MEXP-1152.adf.txt",header=T,skip=18,fill=T,sep="\t")
+A_MEXP_1152_refseq <- bitr(A_MEXP_1152$Reporter.Database.Entry.refseq., fromType = "REFSEQ",toType = "SYMBOL",OrgDb = org.Hs.eg.db) %>%
+  mutate(Reporter.Database.Entry.refseq.=REFSEQ) %>% merge(.,A_MEXP_1152 %>% dplyr::select(Reporter.Name,Reporter.Database.Entry.refseq.)) %>%
+  dplyr::select(Reporter.Name,SYMBOL)
+A_MEXP_1152_genebank <- bitr(A_MEXP_1152$Reporter.Database.Entry.embl., fromType = "ACCNUM",toType = "SYMBOL",OrgDb = org.Hs.eg.db) %>%
+  mutate(Reporter.Database.Entry.embl.=ACCNUM) %>% merge(.,A_MEXP_1152 %>% dplyr::select(Reporter.Name,Reporter.Database.Entry.embl.)) %>%
+  dplyr::select(Reporter.Name,SYMBOL)
+A_MEXP_1152_final <- rbind(A_MEXP_1152_refseq,A_MEXP_1152_genebank)
+length(unique(A_MEXP_1152_final$SYMBOL))
+
+exp <- exp %>% as.data.frame(.) %>%
+  mutate(average=rowSums(.)/ncol(.)) %>%
+  tibble::rownames_to_column("Reporter.Name") %>%
+  merge(.,A_MEXP_1152_final,by="Reporter.Name")  %>%
+  arrange(Reporter.Name,desc(average)) %>%
+  distinct(.,SYMBOL,.keep_all=T) %>%
+  tibble::column_to_rownames("SYMBOL") %>%
+  dplyr::select(-average,-Reporter.Name)
+  
+
+##
+sample_info <- E_MTAB_145_sample %>% arrange(Source.Name) %>%
+  distinct(.,Source.Name,.keep_all=T) %>% as.data.frame(.) %>%
+  mutate(condition=Factor.Value.DISEASESTATE.) %>% 
+  dplyr::select(-Factor.Value.DISEASESTATE.)%>% 
+  tibble::column_to_rownames("Source.Name")
+
+unique(sample_info$condition)
+control_0 <- "normal"
+treat_0 <- "Systemic lupus erythematosus"
+design <- sample_info %>% dplyr::filter(condition %in% c(control_0,treat_0)) %>%
+  mutate(control=ifelse(condition==control_0,1,0),
+         treat=ifelse(condition==treat_0,1,0)) %>% dplyr::select(-condition)
+design <- design %>% tibble::rownames_to_column("sp") %>% dplyr::filter(sp %in% colnames(exp)) %>% 
+  tibble::column_to_rownames("sp")
+
+contrast.matrix<-makeContrasts(paste0(c("treat","control"),collapse = "-"),levels = design)
+contrast.matrix
+exp_to_compare <- exp[,c(rownames(design))]
+
+
+
+
+##开始差异分析
+fit <- lmFit(exp_to_compare,design)
+##step2
+fit2 <- contrasts.fit(fit, contrast.matrix)   
+fit2 <- eBayes(fit2)  ## default no trend !!!
+##eBayes() with trend=TRUE
+##step3
+tempOutput = topTable(fit2, coef=1, n=Inf)
+res_combined <- merge(tempOutput %>% as.data.frame(.) %>% tibble::rownames_to_column("gene_name"),
+                      exp_to_compare %>% as.data.frame(.) %>% tibble::rownames_to_column("gene_name"),
+                      by="gene_name")  
+a <- res_combined %>% dplyr::filter(gene_name %in% c("TRPM2","CREB3L4"))
+write.csv(res_combined,"res_combined_E_MTAB_145_SLE.csv")
+
+
+###E_MTAB_2713
+E_MTAB_2713_sample_raw <- read.csv("/Users/yuxin/Downloads/bioinformatics/E-MTAB-2713/E-MTAB-2713.sdrf.txt",header = TRUE,sep="\t")
+unique(E_MTAB_2713_sample_raw$Characteristics.cell.type.)
+unique(E_MTAB_2713_sample_raw$Characteristics.disease.)
+E_MTAB_2713_sample <- E_MTAB_2713_sample_raw %>%
+  dplyr::filter(Characteristics.cell.type.=="CD16+ neutrophils") %>% 
+  dplyr::select(Source.Name,Characteristics.disease.) #%>% dplyr::filter(.,!grepl("GWAS",Source.Name)) %>% dplyr::filter(Characteristics.disease. %in% c("normal","systemic lupus erythematosus"))
+
+sample_info <- E_MTAB_2713_sample %>% tibble::rownames_to_column("sp") %>%
+  tibble::column_to_rownames("Source.Name") %>% mutate(condition=Characteristics.disease.) %>% 
+  dplyr::select(-Characteristics.disease.,-sp)
+
+#先读取
+#需要下载所有CEL文件（起码是带有CD16的）
+library(oligo)
+dir_0 <- "E-MTAB-2713/CD16"
+celfiles <- E_MTAB_2713_sample$Source.Name
+file.path(dir_0, celfiles)
+
+#先读取
+data.raw <- read.celfiles(filenames = "E-MTAB-2713/CD16/25_sg53_CD16.CEL")
+data.raw <- read.celfiles(filenames = file.path(dir_0, celfiles))
+
+#再arrayQualityMetrics质控，但似乎不必过滤
+#再RMA标准化
+data.raw2 <- rma(data.raw)
+#再combat去除批次效应，文章使用Diagnosis and leukocyte subset were included as a covariates，但似乎不该如此？？？
+#HuGene-1_1-st-v1
+library(clusterProfiler)
+library(org.Hs.eg.db)
+pd_raw <- read.csv("/Users/yuxin/Downloads/bioinformatics/E-MTAB-2713/GPL11532-32230.txt",sep="\t",comment.char="#")
+pd_list <- apply(pd_raw %>% dplyr::select(ID,gene_assignment) %>% filter(gene_assignment !="---"),1,function(x){
+  y <- strsplit(x[2], ' // ', fixed=TRUE) %>% .[[1]]
+  a <- data.frame(Symbol=y) %>% mutate(ID=x[1]) %>% filter(.,!grepl("NM_| |[.]",Symbol)) %>% arrange(Symbol) %>% distinct(.,Symbol,.keep_all=T)
+})
+pd <- do.call(rbind,pd_list) %>% filter(Symbol %in% AnnotationDbi::keys(org.Hs.eg.db, keytype="SYMBOL"))
+
+
+exp_raw <- exprs(data.raw2) %>% as.data.frame(.) %>%
+  mutate(average=rowSums(.)/ncol(.)) %>%
+  tibble::rownames_to_column("ID") 
+exp <- merge(pd,exp_raw,by="ID") %>% 
+  arrange(Symbol,desc(average))  %>%
+  distinct(.,Symbol,.keep_all=T)  %>%
+  dplyr::select(-average,-ID) %>%
+  tibble::column_to_rownames("Symbol")
+
+###
+unique(sample_info$condition)
+control_0 <- "normal"
+treat_1 <- sample_info %>% filter(condition !="normal") %>% .$condition %>% unique(.)
+for(treat_0 in treat_1){
+  design <- sample_info %>% filter(condition %in% c(control_0,treat_0)) %>%
+    mutate(control=ifelse(condition==control_0,1,0),
+           treat=ifelse(condition==treat_0,1,0)) %>% dplyr::select(-condition)
+  contrast.matrix<-makeContrasts(paste0(c("treat","control"),collapse = "-"),levels = design)
+  contrast.matrix
+  exp_to_compare <- exp[,c(rownames(design))]
+  fit <- lmFit(exp_to_compare,design)
+  ##step2
+  fit2 <- contrasts.fit(fit, contrast.matrix)   
+  fit2 <- eBayes(fit2)  ## default no trend !!!
+  ##eBayes() with trend=TRUE
+  ##step3
+  tempOutput = topTable(fit2, coef=1, n=Inf)
+  res_combined <- merge(tempOutput %>% as.data.frame(.) %>% tibble::rownames_to_column("gene_name"),
+                        exp_to_compare %>% as.data.frame(.) %>% tibble::rownames_to_column("gene_name"),
+                        by="gene_name")  
+  a <- res_combined %>% filter(gene_name %in% c("TRPM2"))
+  print(c(treat_0,a$gene_name,a$logFC,a$P.Value,a$adj.P.Val))
+  name <- paste(treat_0,"res_combined_E_MTAB_2713.csv",sep="_")
+  res_combined <- res_combined %>% dplyr::select(gene_name:B)
+  write.csv(res_combined,name)
+}
+
+####
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
