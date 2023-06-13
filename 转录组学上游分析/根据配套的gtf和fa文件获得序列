@@ -1,0 +1,29 @@
+#https://zhuanlan.zhihu.com/p/439168788
+#在terminal中安装gffread
+git clone https://github.com/gpertea/gffread
+cd gffread
+make release
+
+#找到gffread文件夹
+#将gffread（可执行unix文件）复制到/usr/local/bin中
+
+#打开新的终端
+gffread exon.gtf -g Ensembl_97.fa -w Ensembl_97_mouse_transcripts.fa #-w是提取转录本；
+gffread GRCh38.gtf -g GRCh38.fa -x GRCh38.cds.fa #获取CDS
+gffread GRCh38.gtf -g GRCh38.fa -y GRCh38.protein.fa  #获取蛋白
+
+##提取更多的见专栏
+
+
+##将sequence保存为数据框
+##R语言
+library(refGenome) 
+ens <- ensemblGenome()
+read.gtf(ens, "exon.gtf")
+test <- ens@ev[["gtf"]]#里面的transcript_id全都是ENSMUST开头
+library(Biostrings)
+test2 <- readBStringSet("/Users/yuxin/Nutstore\ Files/近期的任务\ 2-7月/CTZ_蛋白质组学/RNA_input/Ensembl_97_mouse_transcripts.fa", 
+                        format="fasta", nrec=-1L, skip=0L, seek.first.rec=FALSE, use.names=TRUE)
+seq <- as.data.frame( test2) %>% dplyr::rename(sequence=x) %>% tibble::rownames_to_column("transcript_id")
+
+
