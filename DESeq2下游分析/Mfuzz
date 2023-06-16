@@ -1,0 +1,57 @@
+library(BiocManager)
+#library(pryr)
+#BiocManager::install("yulab.utils")
+library(Mfuzz)
+#data("yeast") 
+#a1 <- yeast@assayData$exprs
+#a2 <- yeast@phenoData@data
+#https://cloud.tencent.com/developer/article/1845577
+#理解一下
+protein <- sapply(split(rownames(sample),sample$condition),
+                   function(cells) rowMeans(data[,cells])) %>% as.data.frame(.) %>%
+  dplyr::select("Baseline","two_weeks","five_weeks","fifteen_weeks") %>% as.matrix(.)
+mfuzz_class <- new('ExpressionSet',exprs = protein)
+mfuzz_class <- filter.NA(mfuzz_class, thres = 0.25)
+mfuzz_class <- fill.NA(mfuzz_class, mode = 'mean')
+mfuzz_class <- filter.std(mfuzz_class, min.std = 0)
+mfuzz_class <- standardise(mfuzz_class)
+set.seed(123)
+
+
+#求m: fuzzifier 	
+#参考：https://academic.oup.com/bioinformatics/article/26/22/2841/227572?login=false
+#https://www.bioconductor.org/packages/devel/bioc/vignettes/Mfuzz/inst/doc/Mfuzz.pdf
+#D <- ncol(mfuzz_class@assayData$exprs)
+#N <- nrow(mfuzz_class@assayData$exprs)
+#m <- 1+(22.05+1418/N)*(D^(-2))+(0.243+12.33/N)*D^(-0.0406*log(N,base=exp(1))-0.1134)
+m <- mestimate(mfuzz_class) #或者直接计算
+#a <- cselection(mfuzz_class,m,crange=seq(4,100,10),repeats=5,visu=TRUE)
+#a#计算cluster的数量，如果c很大但发生了重复，则说明当前的c不合理
+cluster_num <- 10
+mfuzz_cluster <- mfuzz(mfuzz_class, c = cluster_num, m = mestimate(mfuzz_class))
+p <- mfuzz.plot2(mfuzz_class, cl = mfuzz_cluster, mfrow = c(2, 5), time.labels = colnames(protein),
+            Xwidth=15,Xheight=15)
+cluster_size <- mfuzz_cluster$size
+names(cluster_size) <- 1:cluster_num
+cluster_size
+head(mfuzz_cluster$cluster)
+head(mfuzz_cluster$membership)
+
+protein_cluster <- mfuzz_cluster$cluster
+protein_cluster <- cbind(protein[names(protein_cluster), ], protein_cluster)
+protein_cluster2 <- mfuzz_cluster$cluster
+protein_standard <- mfuzz_class@assayData$exprs
+protein_standard_cluster <- cbind(protein_standard[names(protein_cluster2), ], protein_cluster2) %>%
+  as.data.frame(.)
+mfuzz.plot2(mfuzz_class, cl = mfuzz_cluster, mfrow = c(2, 5), time.labels = colnames(protein),
+                 Xwidth=15,Xheight=15)
+saveRDS(mfuzz_class,"mfuzz_class.rds")
+saveRDS(protein,"protein.rds")
+write.csv(protein_standard_cluster,"protein_standard_cluster.csv")
+
+mfuzz_class <- readRDS("/Users/yuxin/Nutstore Files/近期的任务 2-7月/CTZ_蛋白质组学/input/mfuzz_class.rds")
+protein <- readRDS("/Users/yuxin/Nutstore Files/近期的任务 2-7月/CTZ_蛋白质组学/input/protein.rds")
+mfuzz_cluster <- readRDS("/Users/yuxin/Nutstore Files/近期的任务 2-7月/CTZ_蛋白质组学/input/mfuzz_cluster.rds")
+protein_standard_cluster <- read.csv("/Users/yuxin/Nutstore Files/近期的任务 2-7月/CTZ_蛋白质组学/input/protein_standard_cluster.csv",row.names=1)
+mfuzz.plot2(mfuzz_class, cl = mfuzz_cluster, mfrow = c(2, 5), time.labels = colnames(protein),
+            Xwidth=15,Xheight=15)
