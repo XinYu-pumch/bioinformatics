@@ -1,5 +1,5 @@
 #参考https://zhuanlan.zhihu.com/p/61847802
-cd subread
+cd subread-2.0.3-macOS-x86_64
 cd bin
 ls
 #./featureCounts -T 6 -t exon -g gene_id -a 基因组.gtf -o seq_featurecount.txt bam文件路径   #（比如xxx/*.sorted.bam）
