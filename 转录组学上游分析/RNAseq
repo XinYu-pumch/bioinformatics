@@ -1,1 +1,7 @@
 #参考https://zhuanlan.zhihu.com/p/61847802
+cd subread
+cd bin
+ls
+#./featureCounts -T 6 -t exon -g gene_id -a 基因组.gtf -o seq_featurecount.txt bam文件路径   #（比如xxx/*.sorted.bam）
+./featureCounts -T 6 -t exon -g gene_id -a /Users/yuxin/Downloads/bioinformatics/GSE_raw/clean_fastq/hisat2/genome.gtf -o seq_featurecount_sorted.txt   /Users/yuxin/Downloads/bioinformatics/GSE_raw/clean_fastq/hisat2/*.clean.fastq.sorted.bam
+##seq_featurecount_sorted.txt在subread/bin里面
