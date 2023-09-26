@@ -1,0 +1,67 @@
+while (!is.null(dev.list()))  dev.off()
+##
+library(scatterplot3d)
+df <- t(rlogMat_sva)
+dfGroup <- sample %>% dplyr::select(condition_CD177)
+pca_result <- prcomp(df,scale=F)  # 一个逻辑值，指示在进行分析之前是否应该将变量缩放到具有单位方差
+pca_result$x<-data.frame(pca_result$x)
+colors <- c("blue","green","red","orange")
+colors <- colors[as.numeric(as.factor(dfGroup[,1]))]
+shape<-16:18
+shape<-shape[as.numeric(as.factor(dfGroup[,1]))]
+pVar <- pca_result$sdev^2/sum(pca_result$sdev^2)
+pVar = round(pVar,digits = 3)
+colnames(pca_result$x) = c(
+  paste0("PC1 (",as.character(pVar[1] * 100 ),"%)"),
+  paste0("PC2 (",as.character(pVar[2] * 100 ),"%)"),
+  paste0("PC3 (",as.character(pVar[3] * 100 ),"%)"),
+  "PC4",
+  "PC5",
+  "PC6",
+  "PC7",
+  "PC8",
+  "PC9" )
+
+s3d <- scatterplot3d(pca_result$x[,1:3],
+                     pch = 16,       # 点形状
+                     color=colors,   # 点颜色
+                     cex.symbols = 2 # 点大小
+) 
+
+legend("top",
+       legend = unique(dfGroup[,1]),
+       col =  c("red","blue","green"),
+       pch = 16,
+       inset = -0.1,
+       xpd = TRUE,
+       horiz = TRUE)
+
+text(s3d$xyz.convert(pca_result$x[,c(1,2,3)] + 2),
+     labels = row.names(pca_result$x),
+     cex = 0.8,col = "black")
+
+
+###用ploty
+library(plotly)
+library(htmlwidgets)
+input <- rlogMat_sva
+input <- rlogMat_T ##用这个
+metadata <- data.frame(row.names = colnames(input))
+pca <- PCAtools::pca(as.matrix(na.omit(input)), metadata = metadata, removeVar = 0) #此处removeVar取0
+PCAtools::biplot(pca)
+a <- pca[["rotated"]] %>% mutate(condition=sample$condition_CD177)  
+df <- a
+fig <- plot_ly(df,
+               text = ~rownames(df),
+               x = ~df$PC1,
+               y = ~df$PC2,
+               z = ~df$PC3,
+               color = ~sample$condition_CD177,
+               colors = c('red', 'orange',"blue","green")
+               
+) %>% 
+  add_markers() %>%
+  layout(scene = list(xaxis = list(title = colnames(df)[1]),              # 设置轴标题，同对应的列名
+                      yaxis = list(title = colnames(df)[2]),
+                      zaxis = list(title = colnames(df)[3])))
+fig
