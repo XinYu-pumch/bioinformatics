@@ -1,0 +1,25 @@
+#pathway
+tt <- m_df
+TERM2GENE <- data.frame(TERM=tt$gs_name,NAME=tt$gene_symbol)
+ptw <-c("GSE14308_TH17_VS_NAIVE_CD4_TCELL_UP",
+        "GSE14308_TH17_VS_NAIVE_CD4_TCELL_DN",
+        "WP_IL17_SIGNALING_PATHWAY")
+#tmp <- TERM2GENE %>% filter(.,grepl("GSE14308|GSE14026",TERM))
+#unique(tmp$TERM)
+
+
+TF_KEGG2 <- list()
+tf <- "FOXO1"
+for (tf in unique(chea3_TF_neu_cor$TF_name)){
+  print(tf)
+  a <- chea3_TF_neu_cor %>% filter(TF_name==tf) %>% .$target
+  ENRICH = enricher(gene = a,
+                    pvalueCutoff = 1,
+                    pAdjustMethod = 'fdr',qvalueCutoff = 1,
+                    TERM2GENE = TERM2GENE)
+  ifelse(is.na(ENRICH)==FALSE,TF_KEGG2[[tf]] <- ENRICH@result %>% mutate(TF=tf),print(tf))
+}
+TF_KEGG2_final <- do.call(rbind,TF_KEGG2) 
+test <- mRNA_dif_clean %>% dplyr::select(GeneSymbol,Regulation) %>%
+  dplyr::rename(TF=GeneSymbol)
+TF_KEGG2_final2 <- merge(TF_KEGG2_final,test,by="TF") # %>% filter(pvalue>=0)
