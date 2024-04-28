@@ -1,0 +1,49 @@
+library(msigdbr)
+library(fgsea)
+library(tibble)
+m_df<- msigdbr(species = "Homo sapiens") 
+fgsea_sets<- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+m_df <- as.data.frame(m_df)
+
+
+
+pathway <- rev(c("KEGG_STEROID_BIOSYNTHESIS",
+             "WP_CHOLESTEROL_BIOSYNTHESIS_PATHWAY",
+             "REACTOME_CHOLESTEROL_BIOSYNTHESIS",
+             "KEGG_PRIMARY_BILE_ACID_BIOSYNTHESIS",
+             "KEGG_STEROID_HORMONE_BIOSYNTHESIS",
+             "GOBP_VITAMIN_D_BIOSYNTHETIC_PROCESS",
+             "KEGG_PHENYLALANINE_METABOLISM"))
+pathway <- rev(c("KEGG_STEROID_BIOSYNTHESIS"))
+tt <- rbind(m_df %>% dplyr::filter(.,grepl("KEGG_",gs_name)),
+            m_df %>% dplyr::filter(.,grepl("REACTOME_",gs_name)),
+            m_df %>% dplyr::filter(.,grepl("WP_",gs_name)),
+            m_df %>% dplyr::filter(.,grepl("GOBP_",gs_name)))
+TERM2GENE <- data.frame(term=tt$gs_name,symbol=tt$gene_symbol)
+
+
+
+
+#发现GSEA本质有抽样，所以会有随机性，挑一个最好的
+#https://www.jianshu.com/p/2d0474f5c6f9
+for (i in 1:20){
+  GSEA_celltype <- list()
+  for (typei in unique(input$type)){
+    GSEA_2 <- input %>% dplyr::filter(type==typei) %>%
+      mutate(log2FoldChange=avg_logFC) %>%
+      dplyr::select(gene_name,log2FoldChange) %>% 
+      arrange(desc(log2FoldChange)) %>% deframe(.)
+    GSEA_celltype[[typei]]  <- GSEA(geneList=GSEA_2, 
+                                    TERM2GENE=TERM2GENE,
+                                    pvalueCutoff = 1,
+                                    nPerm        = 10000,
+                                    minGSSize    = 0,
+                                    maxGSSize = 500) %>% .@result %>% mutate(type=typei)
+  }
+  GSEA_celltype <- do.call(rbind,GSEA_celltype)
+  a <- GSEA_celltype  %>% filter(type=="N",ID %in% pathway)
+  name1 <- paste(i,"all_KEGG_WP_RC_GO_allgene_10000.csv",sep="_")
+  write.csv(GSEA_celltype,name1)
+  name2 <- paste(i,"preview_all_KEGG_WP_RC_GO_allgene_10000.csv",sep="_")
+  write.csv(a,name2)
+}
