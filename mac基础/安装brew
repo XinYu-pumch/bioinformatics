@@ -1,3 +1,4 @@
+
 #rosetta打开cmd
 #https://cloud.tencent.com/developer/article/1993522
 
@@ -12,3 +13,6 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 #多版本，参考https://www.cnblogs.com/jimoliunian/p/17131938.html
 alias abrew='arch -arm64 /opt/homebrew/bin/brew'
 alias ibrew='arch -x86_64 /usr/local/bin/brew'
+
+source ~/.zprofile
+source ~/.bash_profile
