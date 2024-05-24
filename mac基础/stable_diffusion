@@ -1,0 +1,23 @@
+#首先需要arm版本python
+#可用arm版brew安装
+brew install python@3.10
+
+#全局代理
+export http_proxy=http://127.0.0.1:7890
+export https_proxy=http://127.0.0.1:7890
+export all_proxy=socks5://127.0.0.1:7891
+git config --global https.proxy http://127.0.0.1:7890
+git config --global https.proxy https://127.0.0.1:7890
+git config --global http.proxy socks5://127.0.0.1:7890
+git config --global https.proxy socks5://127.0.0.1:7890
+
+git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui
+cd /Users/yuxin/stable-diffusion-webui
+
+#删除原有的venv
+python -m venv venv
+source venv/bin/activate
+./webui.sh
+
+#Tag-wd
+#安装即可；python arm版可以装onnxruntime-silicon
