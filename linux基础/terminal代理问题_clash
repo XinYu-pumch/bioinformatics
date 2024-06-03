@@ -47,3 +47,6 @@ set http_proxy=http://127.0.0.1:10809
 set https_proxy=http://127.0.0.1:10809
 
 #git config -l
+
+#huggingface的代理问题
+export HF_ENDPOINT=https://hf-mirror.com && source /etc/network_turbo && python gui.py
