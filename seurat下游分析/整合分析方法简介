@@ -1,0 +1,42 @@
+常见问题：
+
+1）Seurat CCA整合分析后什么情况下用RNAassay，什么时候用intergratedassay？
+
+conserved cell type markers部分，用整合前的“RNA”或整合后的归一化”integrated“分析不会造成差异；
+
+作为一般规则，我们总是建议对原始的“RNA“执行差异分析，而不是对批次校正等值执行差异分析，整合后的数据用于聚类。后续的分析建议建立在“RNA”上，因此在CCA之后，可以设置：DefaultAssay(sc_data) <- "RNA"。
+
+2）Seurat包的两种整合方法CCA和RPCA
+
+CCA和RPCA整合方法都是Seurat包内置并推荐使用的。区别在于：
+
+CCA 方法非常适合在细胞类型保守的情况下识别锚点，但在不同实验处理下基因表达存在非常大的差异，简而言之，CCA适合多个样本具有大致相似的细胞类型分布，也适合跨物种的多样本整合。值得注意的是，CCA方法可能会导致整合过度，即可能会消除多样本间的生物学差异；
+
+而RPCA方法的整合运行速度更快，整合的力度较CCA弱一些（更保守），适合多个样本有不同的细胞类型分布情况；建议多样本数据均是来自同一个平台的，例如要整合的目的样本均来自10X测序平台；如大样本量的单细胞数据集整合。由于RPCA方法较为保守，有些时候需要加强RPCA的整合力度，我们可以通过增加FindIntegrationAnchors函数中的k.anchor参数来增加对齐的强度，默认情况下该参数被设置为5。将这个参数增加到20将有助于将未对齐的细胞类型对齐。
+
+注意：CCA运行速度较慢，且存在矫正过度的问题，数据集之间细胞类型相似时可以尝试。细胞类型相差较大时，推荐使用Harmony和LIGER。
+
+3)Harmony
+
+Harmony发表在2019年的nature methods上《Fast, sensitive and accurate integration of single-cell data with Harmony》，相较于别的整合方法，其优点在于：
+
+运行速度比较快；
+
+节省内存；
+
+不同于RPCA，Harmony可用于跨平台、跨组织的多样本整合。
+
+如果单细胞样本量很大的时候推荐使用，相对于Seurat，Harmony和LIGER会保留更好的异质性。
+
+4）LIGER  相较Harmony，LIGER的运行速度慢一些，cell 文章的评估，认为LIGER更好的保留细胞的异质性。
+
+Liger 2019 年发表于 cell 上"Single-Cell Multi-omic Integration Compares and Contrasts Features of Brain Cell Identity”。LIGER能够跨个体、物种以识别共有的细胞类型，以及数据集特有的特征，提供对不同单细胞数据集的统一分析，LIGER还用于单细胞转录组和scATAC-seq等多拟态数据的整合。
+
+Liger利用非负矩阵分解的方法进行数据集之间的整合，我们需要提供的参数为K和λ。通常，K反映了数据集中真实cluster的个数，而λ则反映了数据集之间的异质性，如果你对你的数据完全没有把握，那么默认参数K=20，λ=5往往也能有不错的表现。当然我们也可以根据KL散度和Alignment score来优化K和λ的选择。
+
+Liger可以通过lambda参数调整对齐程度（alignment），随着λ的增大，我们假定的数据集之间的相似性越高，通常Alignment score就会越高。
+
+作者：maliming
+链接：https://www.jianshu.com/p/5739c559d31d
+来源：简书
+著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。
