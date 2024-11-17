@@ -21,3 +21,7 @@ source venv/bin/activate
 
 #Tag-wd
 #安装即可；python arm版可以装onnxruntime-silicon
+
+for file in *.jpg; do
+  convert "$file" -gravity center -background white -resize 1024x1024 -extent 1024x1024 "${file%.jpg}_resized.jpg"
+done
