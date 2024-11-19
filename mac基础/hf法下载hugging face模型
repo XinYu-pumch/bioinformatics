@@ -1,0 +1,8 @@
+#hf法下载hugging face模型
+#下载hfd.sh
+#https://gist.github.com/padeoe/697678ab8e528b85a2a7bddafea1fa4f
+chmod a+x hfd.sh
+alias hfd="$PWD/hfd.sh"
+export HF_ENDPOINT="https://hf-mirror.com"  #可以使用镜像
+hfd mlx-community/Qwen2.5-32B-Instruct-4bit #直接如此下载即可
+
