@@ -1,0 +1,10 @@
+#下载好bam文件后，用TrimGalore过滤
+
+for file in *_1.fastq.gz
+do
+    # 根据文件名模式匹配找到配对的文件
+    file1="$file"
+    file2="${file/_1.fastq.gz/_2.fastq.gz}"
+    # 运行 trim_galore
+    /Users/yuxin/TrimGalore-0.6.10/trim_galore  -output_dir /Users/yuxin/Downloads/BD_skin/clean --paired --length 150 --quality 25 --stringency 5 -j 10  "$file1" "$file2"
+done
