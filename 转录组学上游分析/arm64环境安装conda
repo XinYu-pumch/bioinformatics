@@ -1,0 +1,17 @@
+##注意M series mac必须使用x86版本的conda环境才能使用bioconda
+## create empty environment
+conda create -n ngstools
+
+## activate environment
+conda activate ngstools
+
+## configure architecture
+conda config --env --set subdir osx-64
+
+## configure channels for Bioconda
+conda config --env --add channels defaults
+conda config --env --add channels bioconda
+conda config --env --add channels conda-forge
+
+## install packages
+conda install fastqc multiqc sra-tools samtools bowtie2 hisat2 subread
