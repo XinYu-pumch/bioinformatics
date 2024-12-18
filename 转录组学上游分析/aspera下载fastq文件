@@ -1,0 +1,19 @@
+#整体参考
+#在https://www.ebi.ac.uk 中找到对应的SRA号，如https://www.ebi.ac.uk/ena/browser/view/PRJNA915044
+#获得fastq的下载链接，如ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR228/081/SRR22877281/SRR22877281_1.fastq.gz
+#下载ibm aspera connect，在mac中以app形式存在
+#构建fq.txt，如：
+#fasp.sra.ebi.ac.uk:/vol1/fastq/SRR228/082/SRR22877282/SRR22877282_1.fastq.gz
+#fasp.sra.ebi.ac.uk:/vol1/fastq/SRR228/080/SRR22877280/SRR22877280_2.fastq.gz
+#fasp.sra.ebi.ac.uk:/vol1/fastq/SRR228/081/SRR22877281/SRR22877281_1.fastq.gz
+#fasp.sra.ebi.ac.uk:/vol1/fastq/SRR228/078/SRR22877278/SRR22877278_1.fastq.gz
+#fasp.sra.ebi.ac.uk:/vol1/fastq/SRR228/082/SRR22877282/SRR22877282_2.fastq.gz
+
+
+#批量下载
+#其中秘钥文件asperaweb_id_dsa，我用了kingfisher提供的，无所谓
+cat fq.txt |while read id 
+do
+/Applications/IBM\ Aspera\ Connect.app/Contents/Resources/ascp -QT -l 300m -P33001 -i /Users/yuxin/kingfisher-download/kingfisher/data/asperaweb_id_dsa.openssh era-fasp@$id  .
+done
+# nohup bash step1-aspera.sh 1>step1-aspera.log 2>&1 &
