@@ -36,3 +36,12 @@ do
     hisat2 -p 10 -x /Users/yuxin/Downloads/BD_skin/clean2/grch38/genome -1 "$file1" -2 "$file2" -S "$file3"
 done
 
+#brew install samtools
+for file in *.sam
+do
+    file1="$file"
+    file2="${file/.sam/.bam}"
+    samtools view -S "$file1" -b > "$file2"
+done
+
+
