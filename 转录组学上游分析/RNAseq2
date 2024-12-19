@@ -44,4 +44,21 @@ do
     samtools view -S "$file1" -b > "$file2"
 done
 
+for file in *.bam
+do
+    file1="$file"
+    file2="${file/.bam/_sorted.bam}"
+    samtools sort "$file1" -o "$file2" -@ 10
+done
+
+for file in *_sorted.bam
+do
+    file1="$file"
+    samtools index "$file1" -@ 10
+done
+
+feature counts -T 6 -t exon -g gene_id -a <gencode.gtf> -o seq_featurecount.txt <seq.bam>
+/Users/yuxin/subread-2.0.3-macOS-x86_64/bin/featureCounts -T 6 -p -t exon -g gene_id -a /Users/yuxin/Downloads/bioinformatics/GSE_raw/clean_fastq/hisat2/genome.gtf -o seq_featurecount_sorted.txt *_sorted.bam
+
+
 
