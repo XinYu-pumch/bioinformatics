@@ -1,0 +1,208 @@
+library(rvest)
+library(xml2)
+library(stringr)
+library(dplyr)
+url <- "https://ypsm.yzsbh.com/drugFilter.action?interId=Y00000010378&show_navbar=true"
+url <- "https://ypsm.yzsbh.com/drugFilter.action?interId=829&show_navbar=true"
+for(i in 13544:30000){
+  print(i)
+  url_raw <- paste("https://ypsm.yzsbh.com/drugFilter.action?interId=",i,sep="")
+  url <- paste(url_raw,"&show_navbar=true",sep="")
+  webpage <- read_html(url)
+  if (!exists("webpage")) {
+    print("无")
+  } else {
+    content <- webpage %>% html_nodes("body") %>% html_text()
+    
+    
+    drug_name <- str_match(content, "\\r\\n\\r\\n\\t\\t\\r\\n\\t\\t\\t\\r\\n\\t\\t\\t\\t([^\\r\\n]+)\\r\\n\\t\\t\\t\\r\\n\\t\\t\\t\\r\\n\\t\\t\\t\\t\\r\\n\\t\\t\\t\\t\\r\\n\\t\\t\\t\\t\\t")[1, 2]
+    if (is.na(drug_name)) {
+      drug_name <- "未找到"
+    }
+    
+    patterns <- list(
+      英文名 = "英文名：\\s*([^\\n]+)",
+      适应症 = "适应症：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+      用法用量 = "用法用量：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+      不良反应 = "不良反应：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+      禁忌 = "禁忌：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+      注意事项 = "注意事项：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+      贮藏 = "贮藏：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+      有效期 = "有效期：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+      生产企业 = "生产企业：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)"
+    )
+    
+    data <- list()
+    for (key in names(patterns)) {
+      match <- str_match(content, patterns[[key]])
+      if (!is.na(match[1, 2])) {
+        data[[key]] <- str_trim(match[1, 2])
+      } else {
+        data[[key]] <- "未找到"
+      }
+    }
+    
+    data <- c(list(药品名称 = drug_name), data)
+    
+    # 转换为数据框
+    df <- data.frame(
+      项目 = names(data),
+      内容 = unlist(data)
+    )
+    
+    
+    
+    rag_text <- df %>%
+      mutate(内容 = str_replace_all(内容, "<br>", "\n")) %>%  # 替换换行符
+      rowwise() %>%
+      mutate(文本 = ifelse(
+        项目 %in% c("药品名称", "英文名"),
+        paste0(项目, "：", 内容),
+        paste0(项目, "：\n", 内容)
+      )) %>%
+      pull(文本) %>%
+      paste(collapse = "\n\n")
+    
+    # 打印结果
+    dir0 <- paste("tianji",str_replace_all(drug_name, "/", "or"),sep="/")
+    writeLines(rag_text, paste(dir0,"txt",sep="."))
+  }
+}
+
+####YB开头的序列
+#https://ypsm.yzsbh.com/drugFilter.action?interId=Y00000013199&show_navbar=true
+for(i in 14265:20000){
+  tryCatch({print(i)
+           url_raw <- paste("https://ypsm.yzsbh.com/drugFilter.action?interId=Y000000",sprintf("%05d", i),sep="")
+           url <- paste(url_raw,"&show_navbar=true",sep="")
+           print(sprintf("%05d", i))
+           webpage <- read_html(url)
+           if (!exists("webpage")) {
+             print("无")
+           } else {
+             content <- webpage %>% html_nodes("body") %>% html_text()
+             
+             
+             drug_name <- str_match(content, "\\r\\n\\r\\n\\t\\t\\r\\n\\t\\t\\t\\r\\n\\t\\t\\t\\t([^\\r\\n]+)\\r\\n\\t\\t\\t\\r\\n\\t\\t\\t\\r\\n\\t\\t\\t\\t\\r\\n\\t\\t\\t\\t\\r\\n\\t\\t\\t\\t\\t")[1, 2]
+             if (is.na(drug_name)) {
+               drug_name <- "未找到"
+             }
+             
+             patterns <- list(
+               英文名 = "英文名：\\s*([^\\n]+)",
+               适应症 = "适应症：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+               用法用量 = "用法用量：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+               不良反应 = "不良反应：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+               禁忌 = "禁忌：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+               注意事项 = "注意事项：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+               贮藏 = "贮藏：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+               有效期 = "有效期：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+               生产企业 = "生产企业：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)"
+             )
+             
+             data <- list()
+             for (key in names(patterns)) {
+               match <- str_match(content, patterns[[key]])
+               if (!is.na(match[1, 2])) {
+                 data[[key]] <- str_trim(match[1, 2])
+               } else {
+                 data[[key]] <- "未找到"
+               }
+             }
+             
+             data <- c(list(药品名称 = drug_name), data)
+             
+             # 转换为数据框
+             df <- data.frame(
+               项目 = names(data),
+               内容 = unlist(data)
+             )
+             
+             
+             
+             rag_text <- df %>%
+               mutate(内容 = str_replace_all(内容, "<br>", "\n")) %>%  # 替换换行符
+               rowwise() %>%
+               mutate(文本 = ifelse(
+                 项目 %in% c("药品名称", "英文名"),
+                 paste0(项目, "：", 内容),
+                 paste0(项目, "：\n", 内容)
+               )) %>%
+               pull(文本) %>%
+               paste(collapse = "\n\n")
+             
+             # 打印结果
+             dir0 <- paste("tianji2",str_replace_all(drug_name, "/", "or"),sep="/")
+             writeLines(rag_text, paste(dir0,"txt",sep="."))
+           }}, error = function(e) {
+             # 错误处理逻辑
+             print(paste("Error at iteration", i, ":", e$message))
+           })
+}
+
+
+# 提取网页中的特定信息，例如标题
+title <- webpage %>% html_nodes("title") %>% html_text()
+print(title)
+a <- webpage %>% html_nodes("style") %>% html_text()
+print(a)
+# 提取其他内容，根据网页结构调整选择器
+content <- webpage %>% html_nodes("body") %>% html_text()
+print(content)
+content
+
+drug_name <- str_match(content, "\\r\\n\\r\\n\\t\\t\\r\\n\\t\\t\\t\\r\\n\\t\\t\\t\\t([^\\r\\n]+)\\r\\n\\t\\t\\t\\r\\n\\t\\t\\t\\r\\n\\t\\t\\t\\t\\r\\n\\t\\t\\t\\t\\r\\n\\t\\t\\t\\t\\t")[1, 2]
+if (is.na(drug_name)) {
+  drug_name <- "未找到"
+}
+
+patterns <- list(
+  英文名 = "英文名：\\s*([^\\n]+)",
+  适应症 = "适应症：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+  用法用量 = "用法用量：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+  不良反应 = "不良反应：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+  禁忌 = "禁忌：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+  注意事项 = "注意事项：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+  贮藏 = "贮藏：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+  有效期 = "有效期：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)",
+  生产企业 = "生产企业：\\s*([\\s\\S]+?)(?=\\n\\t\\t\\t\\t\\t\\r|$)"
+)
+
+data <- list()
+for (key in names(patterns)) {
+  match <- str_match(content, patterns[[key]])
+  if (!is.na(match[1, 2])) {
+    data[[key]] <- str_trim(match[1, 2])
+  } else {
+    data[[key]] <- "未找到"
+  }
+}
+
+data <- c(list(药品名称 = drug_name), data)
+
+# 转换为数据框
+df <- data.frame(
+  项目 = names(data),
+  内容 = unlist(data)
+)
+
+i <- 14266
+url_raw <- paste("https://ypsm.yzsbh.com/drugFilter.action?interId=Y000000",sprintf("%05d", i),sep="")
+url <- paste(url_raw,"&show_navbar=true",sep="")
+print(sprintf("%05d", i))
+webpage <- read_html(url)
+
+rag_text <- df %>%
+  mutate(内容 = str_replace_all(内容, "<br>", "\n")) %>%  # 替换换行符
+  rowwise() %>%
+  mutate(文本 = ifelse(
+    项目 %in% c("药品名称", "英文名"),
+    paste0(项目, "：", 内容),
+    paste0(项目, "：\n", 内容)
+  )) %>%
+  pull(文本) %>%
+  paste(collapse = "\n\n")
+
+# 打印结果
+cat(rag_text)
+writeLines(rag_text, paste(drug_name,"txt",sep="."))
