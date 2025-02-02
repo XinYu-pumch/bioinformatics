@@ -1,0 +1,29 @@
+
+library(KEGGREST)
+hsa_path <- keggLink("pathway","hsa")
+hsa_info <- lapply(unique(hsa_path), keggGet)
+pathway_data <- list()
+for (i in seq_along(hsa_info)) {
+  # 提取通路 ID
+  pathway_id <- hsa_info[[i]][[1]]$ENTRY
+  # 提取通路名称
+  pathway_name <- hsa_info[[i]][[1]]$NAME
+  # 提取基因名（如果有）
+  if (!is.null(hsa_info[[i]][[1]]$GENE)) {
+    genes <- hsa_info[[i]][[1]]$GENE
+    # 基因名在 GENE 字段中是交替出现的（基因 ID 和基因名），我们只需要基因名
+    gene_names <- genes[seq(2, length(genes), by = 2)]
+    gene_names <- str_extract(gene_names, "^[^;]+")
+  } else {
+    gene_names <- NA  # 如果没有基因信息，设为 NA
+  }
+  # 将提取的信息存储到列表中
+  pathway_data[[i]] <- data.frame(
+    Pathway_ID = pathway_id,
+    term_raw = pathway_name,
+    symbol=gene_names)  # 将基因名合并为一个字符串
+}
+kegg_250202 <- do.call(rbind, pathway_data) %>% 
+  mutate(term1=gsub(" ", "_", term_raw)) %>%
+  mutate(term=toupper(term1)) %>% dplyr::select(-term1,-term_raw)
+write.csv(kegg_250202,"kegg_250202.csv")
